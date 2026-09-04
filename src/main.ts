@@ -55,13 +55,8 @@ export const Api = {
     /**
      * The failures worth saying out loud, and how far the watch has read.
      *
-     * A listener is the one path with nobody waiting on it: whatever it broke
-     * is already committed and its caller already answered. The kit keeps the
-     * last hundred and logs each, which is a line in a stream nobody reads.
-     *
-     * Pure, and told where it read to, because the list keeps what it has
-     * already handed over: without `seen`, one broken listener is reported
-     * again on every beat for as long as the process lives.
+     * The kit's list keeps what it already handed over, so without `seen` one
+     * broken listener is reported again on every beat forever.
      */
     unseen: (failures: readonly Failure[], seen: number): { fresh: readonly Failure[]; seen: number } =>
     {
@@ -73,9 +68,7 @@ export const Api = {
     /**
      * Watches for listeners that failed, and says so once each.
      *
-     * A warning rather than a refusal: one undelivered email is not a reason
-     * to take the process out of a load balancer, and `/ready` stays what it
-     * says it is.
+     * A warning, never a 503: one undelivered email is not a dead process.
      */
     watching: (api: Started, log: Logger, every: number): NodeJS.Timeout =>
     {

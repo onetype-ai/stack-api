@@ -60,7 +60,6 @@ export class PhotosService
         });
     }
 
-    /** Every photo of a product that is going away. */
     async dropFor(productId: string): Promise<number>
     {
         const gone = await this.#ctx.db

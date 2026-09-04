@@ -27,7 +27,6 @@ export function caller(
     return calling(permissions, id, { shopId });
 }
 
-/** A caller carrying no shop at all. */
 export function nobody(): Caller
 {
     return calling(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");

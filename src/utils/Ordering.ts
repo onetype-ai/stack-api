@@ -1,9 +1,8 @@
 /**
- * How a list is put in order.
+ * How a list is put in order. Never in SQL, which sorts by code point.
  *
- * Never in SQL: `ORDER BY` is code point order, so every accented word lands
- * after `Z`. A folded column would sort German correctly and Turkish wrongly,
- * where `Ş` follows `S` and `ı` precedes `i`. Only a collator knows that.
+ * A folded column is not the way around that either: it sorts German right
+ * and Turkish wrong, where `Ş` follows `S` and `ı` precedes `i`.
  */
 export const Ordering = {
     by: (locale: string): Intl.Collator =>

@@ -12,33 +12,19 @@ function flattened(raw: string): string
 }
 
 /**
- * What text has to be put through before a database sees it.
+ * What text goes through before a database sees it: SQLite folds ASCII only.
  *
- * SQLite compares and folds ASCII only, so anything that must match or must
- * be unique is folded here first, by the service, before it is stored.
- *
- * Matching and uniqueness need different folds, which is the trap: a search
- * for "Apfel" should find "Äpfel", but they are two German words and a shop
- * may sell both. So one fold drops accents and the other keeps them.
+ * Two folds, and that is the trap. A search for "Apfel" should find "Äpfel",
+ * but they are two German words and a shop may sell both.
  */
 export const Text = {
-    /**
-     * The form a search matches on. Accents dropped, so Uber finds Über.
-     *
-     * NFKD separates a letter from its accent so the accent can be removed,
-     * and folds a ligature into its letters, so a name written with a single
-     * `ﬁ` matches one written with `fi`.
-     */
+    /** What a search matches on: accents dropped, so Uber finds Über. */
     searched: (raw: string): string =>
     {
         return flattened(raw).replace(/\p{Diacritic}/gu, "");
     },
 
-    /**
-     * The form two names collide on. Case, width and ligatures folded, and
-     * accents kept: `Über` and `UBER` are one name, `Apfel` and `Äpfel` are
-     * two.
-     */
+    /** What two names collide on: accents kept, so Apfel and Äpfel are two. */
     same: (raw: string): string =>
     {
         return flattened(raw).normalize("NFC");

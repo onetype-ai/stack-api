@@ -191,11 +191,8 @@ export class OrdersService
     /**
      * What a product being withdrawn does to the orders holding it.
      *
-     * Narrowed the same way every other read is. This runs from a listener,
-     * which has no caller, so the context it was given was told whose work
-     * the event announced: `ctx.forScope(payload.shopId)`. Without that a
-     * listener needs its own unscoped path, and a plugin with two ways to
-     * narrow has one that somebody will forget.
+     * Narrowed like every other read, because the listener handed it a
+     * context already told whose work this was. No second unscoped path.
      */
     async dropFor(productId: string): Promise<number>
     {
@@ -215,10 +212,7 @@ export class OrdersService
     /**
      * Charges the partner, over https.
      *
-     * `ctx.fetch` refuses any host this plugin did not declare, follows no
-     * redirect, and bounds what comes back. What it does not do is check the
-     * shape: another server's answer is input, so it is parsed like a
-     * caller's before anything is believed.
+     * Their answer is parsed before anything in it is believed.
      */
     async #charged(cents: number, reference: string): Promise<void>
     {
