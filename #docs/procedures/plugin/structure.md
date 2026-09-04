@@ -38,10 +38,17 @@ Folder and `name` are the same word, lowercase. The ban on `utils` and
 cannot be named in one word is two plugins.
 
 A file inside carries no plugin prefix: `schemas/Item.ts`, not
-`schemas/DemoItem.ts`. The prefix goes back on at `index.ts`, where a consumer
-sees the name out of context.
+`schemas/DemoItem.ts`. It goes back on at `index.ts`, where a consumer sees
+the name out of context.
 
 A service is a class: `ctx` in the constructor, `#private` for what only it
-calls. Everything else is an object with methods. Imports in order: values,
-then types, then the file's own types, then its one export. Allman braces
-throughout.
+calls. A util is a class too, holding no `ctx` and exported already built:
+
+```ts
+class TextUtil { same(raw: string): string { … } }
+
+export const Text = new TextUtil();
+```
+
+Everything else is an object with methods. Imports: values, then types,
+then the file's own, then its one export. Allman braces.

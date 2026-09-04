@@ -46,24 +46,6 @@ export default tseslint.config(
     },
 
     {
-        // Pure and domain-free is the whole definition. A util reaching a
-        // plugin knows a domain; one reaching the kit wants a ctx, and a
-        // thing that wants a ctx is a service, which belongs to a plugin.
-        files: ["src/utils/**/*.ts"],
-        rules: {
-            "no-restricted-imports": [
-                "error",
-                {
-                    patterns: [{
-                        group: ["@plugins/*", "@plugins/*/**", "@onetype/stack-api-kit", "@onetype/stack-api-kit/*"],
-                        message: "A util is pure and domain-free: it takes values and answers values. Needing a plugin or a ctx means it is a service, and a service belongs to the plugin that owns it.",
-                    }],
-                },
-            ],
-        },
-    },
-
-    {
         files: ["src/plugins/*/**/*.ts"],
         ignores: ["src/plugins/*/tests/**"],
         rules: boundary(
@@ -81,6 +63,24 @@ export default tseslint.config(
             "A test may reach a plugin's contract at \"@plugins/<name>/plugin\", and nothing deeper. Whether it may reach that plugin at all is checked by Project.checks().",
             [{ group: ["@plugins/*/*/**", "@plugins/*/!(plugin)"] }],
         ),
+    },
+
+    {
+        // Pure and domain-free is the whole definition. A util reaching a
+        // plugin knows a domain; one reaching the kit wants a ctx, and a
+        // thing that wants a ctx is a service, which belongs to a plugin.
+        files: ["src/utils/**/*.ts", "src/plugins/*/utils/**/*.ts"],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    patterns: [{
+                        group: ["@plugins/*", "@plugins/*/**", "@onetype/stack-api-kit", "@onetype/stack-api-kit/*"],
+                        message: "A util is pure and domain-free: it takes values and answers values. Needing a plugin or a ctx means it is a service, and a service belongs to the plugin that owns it.",
+                    }],
+                },
+            ],
+        },
     },
 
     {

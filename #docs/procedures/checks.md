@@ -34,3 +34,5 @@ Anything under `#docs/` over 1800 characters, and any plugin with no
   Hold that limit yourself.
 - The `progress` folder is skipped, and `checking.limit` moves the number.
 - `src/utils` is checked for unread fields too, not only `src/plugins`.
+- Lint refuses a util, in `src/utils` or a plugin's own, that imports a plugin
+  or the kit: wanting a `ctx` makes it a service.
