@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { Config } from "./schemas/Config";
 import { OrdersService } from "./services/orders";
-import { Reserving } from "./utils/Reserving";
+import { Reserving } from "./services/Reserving";
 import { orderRoutes } from "./routes/orders";
 import { orders } from "./tables/orders";
 
@@ -76,8 +76,6 @@ export default definePlugin.over<Rows, Services>()("orders", {
             describe: "Lets go of every hold on a product that no longer exists.",
             handle: async (gone, ctx) =>
             {
-                // Acting for the shop the event named, so the service narrows
-                // the same way it does for a request.
                 const acting = ctx.forScope(gone.shopId);
                 const dropped = await acting.services.orders.dropFor(gone.id);
 

@@ -10,10 +10,8 @@ export type Settings = {
     origins: readonly string[];
     bodyBytes: number;
 
-    /** Whether a proxy sits in front, so `x-forwarded-for` is worth reading. */
     behindProxy: boolean;
 
-    /** How often to look for listeners that failed. Zero never looks. */
     watchSeconds: number;
     logLevel: Level;
 };

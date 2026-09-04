@@ -9,12 +9,6 @@ import type { Failure, Logger, Started } from "@onetype/stack-api-kit";
 type Server = ReturnType<typeof serve>;
 
 export const Api = {
-    /**
-     * What a rate limit counts an unknown caller by.
-     *
-     * Trusted with no proxy in front, the header hands an attacker a fresh
-     * counter per request, which is worse than the one shared counter here.
-     */
     from: (behindProxy: boolean) => (c: { req: { header: (name: string) => string | undefined } }): string =>
     {
         const said = behindProxy ? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
@@ -52,12 +46,6 @@ export const Api = {
         Api.closing(server, api, log);
     },
 
-    /**
-     * The failures worth saying out loud, and how far the watch has read.
-     *
-     * The kit's list keeps what it already handed over, so without `seen` one
-     * broken listener is reported again on every beat forever.
-     */
     unseen: (failures: readonly Failure[], seen: number): { fresh: readonly Failure[]; seen: number } =>
     {
         const fresh = failures.filter((one) => one.at > seen);
@@ -65,11 +53,6 @@ export const Api = {
         return { fresh, seen: fresh.reduce((latest, one) => Math.max(latest, one.at), seen) };
     },
 
-    /**
-     * Watches for listeners that failed, and says so once each.
-     *
-     * A warning, never a 503: one undelivered email is not a dead process.
-     */
     watching: (api: Started, log: Logger, every: number): NodeJS.Timeout =>
     {
         let seen = 0;

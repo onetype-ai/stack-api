@@ -3,7 +3,7 @@ import { Catalog } from "@plugins/catalog";
 import { Refusal } from "@onetype/stack-api-kit";
 
 import { Charge } from "../schemas/Charge";
-import type { Reserving } from "../utils/Reserving";
+import type { Reserving } from "./Reserving";
 import { orders } from "../tables/orders";
 
 import type { Inside } from "../types/Context";
@@ -50,14 +50,6 @@ export class OrdersService
         return this.#shown(row);
     }
 
-    /**
-     * Holds a product for a while.
-     *
-     * The price comes from the plugin that owns it, never from a join across
-     * the boundary and never from the caller. A hold that nobody pays for is
-     * released by a command asked for here, and until then it is a moment on
-     * the row that reads ignore.
-     */
     async reserve(productId: string): Promise<Order>
     {
         const product = await Catalog.get(this.#ctx, productId);
@@ -101,14 +93,6 @@ export class OrdersService
         });
     }
 
-    /**
-     * Takes the money, then records it.
-     *
-     * The partner is dialled outside the transaction: SQLite has one writer,
-     * and holding it while somebody else's server thinks would stop every
-     * other write in the process. What it costs is a payment taken for an
-     * order that then fails to save, which the reference makes recoverable.
-     */
     async pay(id: string): Promise<Order>
     {
         const order = await this.get(id);
@@ -165,7 +149,6 @@ export class OrdersService
         });
     }
 
-    /** Every hold whose moment has passed. Run by a scheduled command. */
     async releaseHolds(): Promise<number>
     {
         return this.#ctx.tx(async (inside) =>
@@ -188,12 +171,6 @@ export class OrdersService
         });
     }
 
-    /**
-     * What a product being withdrawn does to the orders holding it.
-     *
-     * Narrowed like every other read, because the listener handed it a
-     * context already told whose work this was. No second unscoped path.
-     */
     async dropFor(productId: string): Promise<number>
     {
         const gone = await this.#ctx.write(() =>
@@ -209,11 +186,6 @@ export class OrdersService
         return gone.length;
     }
 
-    /**
-     * Charges the partner, over https.
-     *
-     * Their answer is parsed before anything in it is believed.
-     */
     async #charged(cents: number, reference: string): Promise<void>
     {
         const url = this.#ctx.config.payments;
@@ -233,8 +205,6 @@ export class OrdersService
             body: { cents, reference },
         });
 
-        // Whatever signs this call is added by the dialler the project built,
-        // never here: a key a plugin can read is a key its config can log.
 
         const told = Charge.schema.safeParse(answer);
 

@@ -70,13 +70,6 @@ export class PhotosService
         return gone.length;
     }
 
-    /**
-     * Refuses a product this shop does not sell.
-     *
-     * Narrowed on `products`, not on `photos`: a condition belongs to the
-     * table it is read against, and using one table's scope against another
-     * asks the database for a column that is not there.
-     */
     async #owned(productId: string): Promise<void>
     {
         const [found] = await this.#ctx.db

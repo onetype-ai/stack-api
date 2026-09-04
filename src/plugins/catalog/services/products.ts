@@ -1,9 +1,8 @@
+import { Refusal } from "@onetype/stack-api-kit";
 import { and, eq, max } from "drizzle-orm";
 
-import type { SQL } from "drizzle-orm";
-import { Refusal } from "@onetype/stack-api-kit";
-
 import { Ordering } from "@utils/Ordering";
+import { Paging } from "../utils/Paging";
 import { Product } from "../schemas/Product";
 import { Text } from "@utils/Text";
 import { products } from "../tables/products";
@@ -11,6 +10,7 @@ import { products } from "../tables/products";
 import type { Inside } from "../types/Context";
 import type { Listing } from "../types/Listing";
 import type { ProductPage } from "../schemas/ProductPage";
+import type { SQL } from "drizzle-orm";
 import type { Status } from "../schemas/Status";
 
 type Row = typeof products.$inferSelect;
@@ -24,13 +24,6 @@ export class ProductsService
         this.#ctx = ctx;
     }
 
-    /**
-     * One page, in the caller's language.
-     *
-     * Ordered here rather than in SQL, because SQL orders by code point and
-     * would put every accented name after Z. The cost is that the shop's
-     * products are collated in the process; the page size bounds what leaves.
-     */
     async list(asked: Listing): Promise<ProductPage>
     {
         const found = await this.#ctx.db
@@ -41,17 +34,11 @@ export class ProductsService
         const collator = Ordering.by(asked.locale);
         const sorted = [...found].sort((one, two) => collator.compare(one.name, two.name));
 
-        const from = asked.after === undefined
-            ? 0
-            : sorted.findIndex((row) => row.id === asked.after) + 1;
-
-        const size = this.#ctx.config.pageSize;
-        const page = sorted.slice(from, from + size);
-        const last = page.at(-1);
+        const { page, after } = Paging.from(sorted, this.#ctx.config.pageSize, asked.after);
 
         return {
             products: page.map((row) => this.#shown(row)),
-            ...(from + size < sorted.length && last !== undefined && { after: last.id }),
+            ...(after !== undefined && { after }),
         };
     }
 
@@ -67,7 +54,6 @@ export class ProductsService
         return this.#shown(row);
     }
 
-    /** Every product whose folded name holds this, so Uber finds Über. */
     async matching(text: string): Promise<Product[]> 
     {
         const looking = Text.searched(text);
@@ -180,7 +166,6 @@ export class ProductsService
         return found.length;
     }
 
-    /** Narrowed to the caller's shop. `ctx.scoped` refuses when they have none. */
     #scoped(status?: Status): SQL | undefined
     {
         const shop = this.#ctx.scoped<SQL>("products");
@@ -198,7 +183,6 @@ export class ProductsService
         return new Refusal(404, "NOT_FOUND", "No such product.");
     }
 
-    /** Only what the schema names leaves. The shop and the fold never do. */
     #shown(row: Row): Product
     {
         return {

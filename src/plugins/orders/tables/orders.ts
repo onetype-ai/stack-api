@@ -7,7 +7,6 @@ export const orders = sqliteTable("orders_orders", {
     cents: integer("cents").notNull(),
     status: text("status").notNull(),
 
-    /** When a reservation stops being one. Read, never waited on. */
     holdsUntil: integer("holds_until").notNull(),
 
     createdAt: text("created_at").notNull(),

@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import { Api } from "../../main";
 
-/** A request carrying whatever headers a test names, and nothing else. */
 function asking(headers: Record<string, string> = {})
 {
     return { req: { header: (name: string) => headers[name.toLowerCase()] } };
@@ -47,10 +46,6 @@ describe("what a watch says about listeners that failed", () =>
         expect(seen).toBe(20);
     });
 
-    /**
-     * The kit keeps its last hundred, so a watch that only asked "is it
-     * empty" would report the same broken listener on every beat forever.
-     */
     test("and never the same one twice", () =>
     {
         const held = [broke(10), broke(20)];

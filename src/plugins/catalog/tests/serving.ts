@@ -17,7 +17,6 @@ export function serving(config: Partial<Config> = {}, now?: () => number): Promi
     });
 }
 
-/** A caller of one shop. The claim is what every read narrows on. */
 export function caller(
     shopId = "acme",
     permissions: readonly string[] = ["catalog.read", "catalog.write"],
@@ -32,7 +31,6 @@ export function nobody(): Caller
     return calling(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");
 }
 
-/** This plugin's own tables, for arranging what no route can write. */
 export function rows(api: Serving): Rows
 {
     return api.kernel.context("catalog").db as Rows;

@@ -56,7 +56,6 @@ describe("ordering", () =>
             await add(name);
         }
 
-        // Ş follows all of S in Turkish, so Şeker comes last.
         expect(await named("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
     });
 
@@ -106,8 +105,6 @@ describe("uniqueness", () =>
     {
         api = await serving();
 
-        // Apfel and Äpfel are two German words. A fold that collided them
-        // would refuse a shop the right to sell both.
         expect(await add("Apfel")).toBe(201);
         expect(await add("Äpfel")).toBe(201);
     });
@@ -127,7 +124,6 @@ describe("length", () =>
     {
         api = await serving();
 
-        // One family emoji is 11 UTF-16 units and one character.
         expect(await add("👨‍👩‍👧‍👦".repeat(20))).toBe(201);
         expect(await add("あ".repeat(121))).toBe(400);
     });

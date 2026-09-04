@@ -44,8 +44,6 @@ export const productRoutes: readonly Endpoint<Inside>[] = [
         {
             const product = await ctx.services.products.get(input.id);
 
-            // A status and a header are the two things a schema cannot carry,
-            // which is the whole reason Answered exists.
             return new Answered(200, product, { "cache-control": "private, max-age=30" });
         },
     }),
@@ -68,9 +66,6 @@ export const productRoutes: readonly Endpoint<Inside>[] = [
         describe: "Adds a product to this shop.",
         requires: ["catalog.write"],
         input: z.object({
-            // Deliberately looser than the 120 a name may hold: this bounds
-            // what is worth parsing, and `parseName` counts characters rather
-            // than UTF-16 units, so it can say which one was too many.
             name: z.string().min(1).max(4000),
             cents: z.number().int().nonnegative().max(100_000_000),
         }),
