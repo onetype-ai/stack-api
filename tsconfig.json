@@ -1,0 +1,14 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "types": ["node"],
+        "paths": {
+            "@onetype/stack-api-kit": ["./packages/stack-api-kit/src/index.ts"],
+            "@onetype/stack-api-kit/testing": ["./packages/stack-api-kit/src/testing.ts"],
+            "@plugins/*": ["./src/plugins/*"],
+            "@utils/*": ["./src/utils/*"]
+        }
+    },
+    "include": ["src/**/*.ts", "tests/**/*.ts", "*.ts"],
+    "exclude": ["node_modules", "packages"]
+}

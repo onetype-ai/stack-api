@@ -1,0 +1,38 @@
+import { Env } from "./env";
+
+export type Level = "debug" | "info" | "warn" | "error";
+
+export type Settings = {
+    port: number;
+    database: string;
+    outbox: boolean;
+    schedule: boolean;
+    origins: readonly string[];
+    bodyBytes: number;
+
+    /** Whether a proxy sits in front, so `x-forwarded-for` is worth reading. */
+    behindProxy: boolean;
+
+    /** How often to look for listeners that failed. Zero never looks. */
+    watchSeconds: number;
+    logLevel: Level;
+};
+
+export const Settings = {
+    levels: ["debug", "info", "warn", "error"] as const satisfies readonly Level[],
+
+    read: (): Settings =>
+    {
+        return {
+            port: Env.number("PORT", 3000),
+            database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
+            outbox: Env.on("OUTBOX", false),
+            schedule: Env.on("SCHEDULE", false),
+            origins: Env.list("ORIGINS"),
+            bodyBytes: Env.number("BODY_BYTES", 1_000_000),
+            behindProxy: Env.on("BEHIND_PROXY", false),
+            watchSeconds: Env.number("WATCH_SECONDS", 60),
+            logLevel: Env.one("LOG_LEVEL", Settings.levels, "info"),
+        };
+    },
+};
