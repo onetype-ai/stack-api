@@ -5,17 +5,12 @@ and enforces the boundaries between them.
 
 ## Setting up
 
-This repository holds the API only. It consumes one shared package that lives
-outside it, linked in rather than committed:
-
 ```sh
-mkdir -p packages
-ln -s /path/to/stack-api-kit packages/stack-api-kit
-
 pnpm install
 ```
 
-`packages/` is in `.gitignore`, so the link is set up per machine.
+The kernel is one package from npm, `@onetype/stack-api-kit`. Nothing else is
+shared, and nothing is linked.
 
 ## Running
 

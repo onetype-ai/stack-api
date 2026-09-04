@@ -1,7 +1,6 @@
 # Stack
 
-pnpm workspace. The API is the root; `packages/**` is what it consumes
-through `workspace:*`.
+One package from npm, `@onetype/stack-api-kit`, and nothing else shared.
 
 ## Tools
 
