@@ -22,8 +22,20 @@ export const Product = {
 
     parseName: (raw: string): string =>
     {
-        const name = raw.normalize("NFC").trim().replace(/\s+/gu, " ");
+        const name = Text.visible(raw).normalize("NFC").trim().replace(/\s+/gu, " ");
         const length = Text.characters(name);
+
+        // Bounded twice: what a reader counts, and what storing it costs. One
+        // letter can carry three thousand marks and still read as one.
+        if (Text.units(name) > LIMIT * 8)
+        {
+            throw new Refusal(
+                400,
+                "INVALID_NAME",
+                `A name is 1 to ${String(LIMIT)} characters.`,
+                { name: `Between 1 and ${String(LIMIT)} characters.` },
+            );
+        }
 
         if (length === 0 || length > LIMIT)
         {

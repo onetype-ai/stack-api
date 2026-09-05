@@ -1,4 +1,4 @@
-import { and, count, eq, lte, max } from "drizzle-orm";
+import { and, count, eq, gt, lte, max } from "drizzle-orm";
 import { Catalog } from "@plugins/catalog";
 import { Refusal } from "@onetype/stack-api-kit";
 
@@ -63,6 +63,16 @@ export class OrdersService
 
         return this.#ctx.tx(async (inside) =>
         {
+            // Asked again inside the transaction. The answer above is from
+            // before it opened, and a product withdrawn in that gap would
+            // otherwise be reserved anyway, and then paid for.
+            const still = await Catalog.get(inside, productId);
+
+            if (still.status !== "listed")
+            {
+                throw new Refusal(409, "NOT_FOR_SALE", "That product is not for sale.");
+            }
+
             const [highest] = await inside.db
                 .select({ at: max(orders.sequence) })
                 .from(orders)
@@ -83,7 +93,7 @@ export class OrdersService
 
             // Asked for inside the transaction, so a reservation that rolls
             // back is never released by a command about nothing.
-            inside.commands.later("orders.release-holds", {}, this.#ctx.config.holdSeconds);
+            inside.commands.later("orders.release-holds", { shopId: row.shopId }, this.#ctx.config.holdSeconds);
 
             this.#ctx.owned<Reserving>()?.took();
 
@@ -97,27 +107,43 @@ export class OrdersService
     {
         const order = await this.get(id);
 
-        if (order.status !== "reserved")
+        // Won in one statement, before the money moves: a second payer finds the
+        // row no longer reserved and is refused, rather than charging it again.
+        const [won] = await this.#ctx.write(() =>
+            this.#ctx.db
+                .update(orders)
+                .set({ status: "paid" })
+                .where(and(
+                    this.#just(id),
+                    eq(orders.status, "reserved"),
+                    gt(orders.holdsUntil, this.#ctx.now()),
+                ))
+                .returning());
+
+        if (won === undefined)
         {
-            throw new Refusal(409, "NOT_RESERVED", "That order is not waiting to be paid.");
+            throw order.status === "reserved"
+                ? new Refusal(409, "HOLD_EXPIRED", "That reservation has expired.")
+                : new Refusal(409, "NOT_RESERVED", "That order is not waiting to be paid.");
         }
 
-        const [held] = await this.#ctx.db.select().from(orders).where(this.#just(id));
-
-        if (held === undefined || held.holdsUntil <= this.#ctx.now())
+        try
         {
-            throw new Refusal(409, "HOLD_EXPIRED", "That reservation has expired.");
+            await this.#charged(won.cents, won.id);
         }
+        catch (cause)
+        {
+            // Put back where it was, or a refused card leaves an order marked
+            // paid that nobody paid for.
+            await this.#ctx.write(() =>
+                this.#ctx.db.update(orders).set({ status: "reserved" }).where(this.#just(id)));
 
-        await this.#charged(order.cents, order.id);
+            throw cause;
+        }
 
         return this.#ctx.tx(async (inside) =>
         {
-            const [row] = await inside.db
-                .update(orders)
-                .set({ status: "paid" })
-                .where(this.#just(id))
-                .returning();
+            const [row] = await inside.db.select().from(orders).where(this.#just(id));
 
             if (row === undefined)
             {
@@ -149,7 +175,7 @@ export class OrdersService
         });
     }
 
-    async releaseHolds(): Promise<number>
+    async releaseHolds(shopId: string): Promise<number>
     {
         return this.#ctx.tx(async (inside) =>
         {
@@ -157,6 +183,7 @@ export class OrdersService
                 .update(orders)
                 .set({ status: "expired" })
                 .where(and(
+                    eq(orders.shopId, shopId),
                     eq(orders.status, "reserved"),
                     lte(orders.holdsUntil, this.#ctx.now()),
                 ))

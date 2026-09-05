@@ -57,6 +57,14 @@ export class ProductsService
     async matching(text: string): Promise<Product[]> 
     {
         const looking = Text.searched(text);
+
+        // Everything holds "", so a search that folded away would answer with
+        // the whole shop rather than with nothing.
+        if (looking === "")
+        {
+            return [];
+        }
+
         const found = await this.#ctx.db.select().from(products).where(this.#scoped());
 
         return found

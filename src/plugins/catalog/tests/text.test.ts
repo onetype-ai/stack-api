@@ -59,16 +59,30 @@ describe("ordering", () =>
         expect(await named("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
     });
 
-    test("orders Serbian written in Latin, not in Cyrillic", async () =>
+    // A tag naming its script gets that script's order. The stack does not
+    // pick one for a language that writes in two.
+    test("orders by the script the caller named", async () =>
     {
-        api = await serving({ locale: "sr" });
+        api = await serving({ locale: "sr-Latn" });
 
         for (const name of ["Cvet", "Ćuprija", "Čvor"])
         {
             await add(name);
         }
 
-        expect(await named("sr")).toEqual(["Cvet", "Čvor", "Ćuprija"]);
+        expect(await named("sr-Latn")).toEqual(["Cvet", "Čvor", "Ćuprija"]);
+    });
+
+    test("and falls back to English rather than failing on a tag it cannot read", async () =>
+    {
+        api = await serving();
+
+        for (const name of ["Beta", "Alpha"])
+        {
+            await add(name);
+        }
+
+        expect(await named("!!")).toEqual(["Alpha", "Beta"]);
     });
 });
 
@@ -109,12 +123,22 @@ describe("uniqueness", () =>
         expect(await add("Äpfel")).toBe(201);
     });
 
-    test("refuses a name written with a ligature to look different", async () =>
+    // A ligature is a different name, because the fold that would join it also
+    // joins "Model 2" with "Model ²", and a shop sells both of those.
+    test("refuses a name hidden behind characters that draw nothing", async () =>
     {
         api = await serving();
 
         expect(await add("Office")).toBe(201);
-        expect(await add("Oﬃce")).toBe(409);
+        expect(await add("Offi\u200Bce")).toBe(409);
+    });
+
+    test("but keeps two names a reader can tell apart", async () =>
+    {
+        api = await serving();
+
+        expect(await add("Model 2")).toBe(201);
+        expect(await add("Model ²")).toBe(201);
     });
 });
 

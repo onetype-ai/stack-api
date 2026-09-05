@@ -105,16 +105,20 @@ export default definePlugin.over<Rows, Services>()("orders", {
 
     commands: {
         "orders.release-holds": defineCommand<Inside>()({
-            describe: "Lets go of every reservation whose moment has passed.",
+            describe: "Lets go of one shop's reservations whose moment has passed.",
 
-            schema: z.object({}),
-            run: async (_given, ctx) =>
+            // The shop travels in the payload, and nothing else decides which
+            // rows are touched: a scheduled command has no caller to scope by,
+            // and without this the sweep would reach every shop at once.
+            // It stays ungated for that reason, so the payload is the boundary.
+            schema: z.object({ shopId: z.string().min(1) }),
+            run: async (given, ctx) =>
             {
-                const released = await ctx.services.orders.releaseHolds();
+                const released = await ctx.services.orders.releaseHolds(given.shopId);
 
                 if (released > 0)
                 {
-                    ctx.log.info("holds released", { released });
+                    ctx.log.info("holds released", { released, shopId: given.shopId });
                 }
             },
         }),
