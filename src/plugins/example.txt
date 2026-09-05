@@ -1,8 +1,8 @@
 # catalog, orders packed
 
 Every file of these plugins, one after another. A line starting with
-"==> " opens a file and names its path; everything until the next such line
-is that file, byte for byte.
+"==> " opens a file and names its path; everything until the next such
+line is that file, byte for byte.
 
 Rebuild the folders with:  node tools/plugins.mjs unpack
 Rewrite this file with:    node tools/plugins.mjs pack catalog orders
