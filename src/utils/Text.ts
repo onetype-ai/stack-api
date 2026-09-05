@@ -28,16 +28,22 @@ class TextUtil
         "\uFB03": "ffi", "\uFB04": "ffl", "\uFB05": "st", "\uFB06": "st",
     }));
 
-    // A letter that draws like another is only useful beside letters from a
-    // different script. Folding them together would make "Рок" and "Pok" one
-    // product, so this answers which alphabets are in play and the caller
-    // decides.
-    alphabets(raw: string): number
+    // A word written in two alphabets is one letter pretending to be another:
+    // "Widgеt" with a Cyrillic e. A name may hold several alphabets, because
+    // "iPhone 15 Про" is what a Russian shop sells, but no single word may.
+    mixed(raw: string): boolean
     {
-        return [/\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u]
-            .filter((one) => one.test(raw))
-            .length;
+        return this.visible(raw).split(/\s+/u).some((word) =>
+        {
+            return TextUtil.#alphabets.filter((one) => one.test(word)).length > 1;
+        });
     }
+
+    static #alphabets = [
+        /\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u,
+        /\p{Script=Cherokee}/u, /\p{Script=Armenian}/u, /\p{Script=Hebrew}/u,
+        /\p{Script=Arabic}/u, /\p{Script=Han}/u, /\p{Script=Hangul}/u,
+    ];
 
     characters(raw: string): number
     {

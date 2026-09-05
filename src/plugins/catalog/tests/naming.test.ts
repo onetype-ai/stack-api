@@ -17,7 +17,7 @@ describe("two names that read differently", () =>
 
 describe("two names that read the same", () =>
 {
-    test("and a name mixing alphabets is refused, not quietly doubled", async () =>
+    test("and a word written in two alphabets is refused, not quietly doubled", async () =>
     {
         const api = await serving();
 
@@ -25,10 +25,15 @@ describe("two names that read the same", () =>
             method: "POST", path: "/catalog/products", input: { name, cents: 100 }, caller: caller(),
         });
 
+        // One letter pretending to be another, inside one word.
         expect((await add("Widgеt")).status).toBe(400);
         expect((await add("Sοap")).status).toBe(400);
+        expect((await add("ᎠPPLE")).status).toBe(400);
 
-        // One alphabet is one shop's business, and two of them are two names.
+        // What shops actually sell: a brand in one alphabet beside a word in
+        // another, and two words nobody would confuse.
+        expect((await add("iPhone 15 Про")).status).toBe(201);
+        expect((await add("Nike Παπούτσια")).status).toBe(201);
         expect((await add("Рок")).status).toBe(201);
         expect((await add("Pok")).status).toBe(201);
 
