@@ -1,26 +1,31 @@
-#!/usr/bin/env node
 //
-// Plugins as one readable file, and back again.
+// Folders as one readable file, and back again.
 //
-//   node tools/plugins.mjs pack                packs the demo pair
-//   node tools/plugins.mjs pack a b            packs only a and b
-//   node tools/plugins.mjs unpack              rebuilds the folders
+// A Packer is told which folder it owns and what may be packed out of it.
+// Packing writes example.txt beside them and removes what it read, so there
+// is one copy rather than two that drift apart. Reading that file is meant to
+// replace walking the tree: every path and every line, in the order somebody
+// would read them.
 //
-// Packing writes src/plugins/example.txt and removes the folders it read, so
-// there is one copy rather than two that drift apart. Reading that file is
-// meant to replace walking the tree: every path and every line, in the order
-// somebody would read them.
+//   new Packer({ at: "src/plugins", demo: ["catalog"] }).run(argv)
+//
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 
-class PluginsTool
+export class Packer
 {
-    root = process.cwd();
-    plugins = join(process.cwd(), "src", "plugins");
-    file = join(process.cwd(), "src", "plugins", "example.txt");
-    demo = ["catalog", "orders"];
     mark = "==> ";
+
+    constructor({ at, demo, name })
+    {
+        this.root = process.cwd();
+        this.folder = join(this.root, ...at.split("/"));
+        this.file = join(this.folder, "example.txt");
+        this.demo = demo;
+        this.name = name;
+        this.at = at;
+    }
 
     pack(asked)
     {
@@ -28,20 +33,20 @@ class PluginsTool
 
         for (const name of names)
         {
-            if (!existsSync(join(this.plugins, name)))
+            if (!existsSync(this.held(name)))
             {
-                throw new Error(`No plugin named "${name}" in src/plugins/, so nothing was packed.`);
+                throw new Error(`No ${this.name} named "${name}" in ${this.at}/, so nothing was packed.`);
             }
         }
 
-        const files = names.flatMap((name) => this.walk(join(this.plugins, name)).sort((one, two) =>
+        const files = names.flatMap((name) => this.walk(this.held(name)).sort((one, two) =>
         {
             return this.weigh(one) - this.weigh(two) || one.localeCompare(two);
         }));
 
         if (files.length === 0)
         {
-            throw new Error("Those plugins hold no files, so nothing was packed.");
+            throw new Error(`Those ${this.name}s hold no files, so nothing was packed.`);
         }
 
         let out = this.head(names);
@@ -59,12 +64,12 @@ class PluginsTool
             out += `${this.mark}${path}\n${body}${body.endsWith("\n") ? "" : "\n"}`;
         }
 
-        mkdirSync(this.plugins, { recursive: true });
+        mkdirSync(this.folder, { recursive: true });
         writeFileSync(this.file, out);
 
         for (const name of names)
         {
-            rmSync(join(this.plugins, name), { recursive: true, force: true });
+            rmSync(this.held(name), { recursive: true, force: true });
         }
 
         console.log(`packed ${names.join(", ")} (${files.length} files) into ${relative(this.root, this.file)}`);
@@ -86,17 +91,18 @@ class PluginsTool
 
         for (const [named] of files)
         {
-            if (!join(this.root, named).startsWith(`${this.plugins}${sep}`))
+            if (!join(this.root, named).startsWith(`${this.folder}${sep}`))
             {
-                throw new Error(`"${named}" is outside src/plugins/, so nothing was written.`);
+                throw new Error(`"${named}" is outside ${this.at}/, so nothing was written.`);
             }
         }
 
-        const names = [...new Set(files.map(([named]) => named.split("/")[2]))];
+        const depth = this.at.split("/").length;
+        const names = [...new Set(files.map(([named]) => (named.split("/")[depth] ?? "").replace(/\.tsx?$/, "")))];
 
         for (const name of names)
         {
-            rmSync(join(this.plugins, name), { recursive: true, force: true });
+            rmSync(join(this.folder, name), { recursive: true, force: true });
         }
 
         for (const [named, body] of files)
@@ -107,7 +113,7 @@ class PluginsTool
             writeFileSync(full, body.endsWith("\n") ? body : `${body}\n`);
         }
 
-        console.log(`unpacked ${names.join(", ")} (${files.length} files) into ${relative(this.root, this.plugins)}`);
+        console.log(`unpacked ${names.join(", ")} (${files.length} files) into ${relative(this.root, this.folder)}`);
     }
 
     read(packed)
@@ -145,8 +151,20 @@ class PluginsTool
         return files;
     }
 
+    held(name)
+    {
+        const folder = join(this.folder, name);
+
+        return existsSync(folder) && statSync(folder).isDirectory() ? folder : `${folder}.ts`;
+    }
+
     walk(at)
     {
+        if (!statSync(at).isDirectory())
+        {
+            return at === this.file ? [] : [at];
+        }
+
         const found = [];
 
         for (const entry of readdirSync(at))
@@ -184,14 +202,27 @@ class PluginsTool
     {
         return `# ${names.join(", ")} packed
 
-Every file of ${names.length === 1 ? "this plugin" : "these plugins"}, one after another. A line starting with
-"${this.mark}" opens a file and names its path; everything until the next such
-line is that file, byte for byte.
+Every file of ${names.length === 1 ? `this ${this.name}` : `these ${this.name}s`}, one after another. A line starting
+with "${this.mark}" opens a file and names its path; everything until the next
+such line is that file, byte for byte.
 
-Rebuild the folders with:  node tools/plugins.mjs unpack
-Rewrite this file with:    node tools/plugins.mjs pack ${names.join(" ")}
+Rebuild the folders with:  node tools/pack/${this.name}s.mjs unpack
+Rewrite this file with:    node tools/pack/${this.name}s.mjs pack ${names.join(" ")}
 
 `;
+    }
+
+    ran(argv)
+    {
+        try
+        {
+            this.run(argv);
+        }
+        catch (error)
+        {
+            console.error(error instanceof Error ? error.message : error);
+            process.exit(1);
+        }
     }
 
     run(argv)
@@ -210,19 +241,7 @@ Rewrite this file with:    node tools/plugins.mjs pack ${names.join(" ")}
             return;
         }
 
-        console.error("Usage: node tools/plugins.mjs pack [name...] | unpack");
+        console.error(`Usage: node tools/pack/${this.name}s.mjs pack [name...] | unpack`);
         process.exit(1);
     }
-}
-
-export const Plugins = new PluginsTool();
-
-try
-{
-    Plugins.run(process.argv.slice(2));
-}
-catch (error)
-{
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
 }

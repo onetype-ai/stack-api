@@ -1,11 +1,11 @@
 # catalog, orders packed
 
-Every file of these plugins, one after another. A line starting with
-"==> " opens a file and names its path; everything until the next such
-line is that file, byte for byte.
+Every file of these plugins, one after another. A line starting
+with "==> " opens a file and names its path; everything until the next
+such line is that file, byte for byte.
 
-Rebuild the folders with:  node tools/plugins.mjs unpack
-Rewrite this file with:    node tools/plugins.mjs pack catalog orders
+Rebuild the folders with:  node tools/pack/plugins.mjs unpack
+Rewrite this file with:    node tools/pack/plugins.mjs pack catalog orders
 
 ==> src/plugins/catalog/plugin.ts
 import { defineCommand, defineParticipant, definePlugin } from "@onetype/stack-api-kit";
@@ -1259,7 +1259,6 @@ export type Services = {
 ==> src/plugins/catalog/utils/Paging.ts
 class PagingUtil
 {
-    // A cursor, not an offset: a row inserted between requests shifts offsets.
     from<Row extends { id: string }>(sorted: readonly Row[], size: number, after?: string):
         { page: readonly Row[]; after?: string }
     {

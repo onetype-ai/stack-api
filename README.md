@@ -46,7 +46,9 @@ project no longer needs them:
 Both domains are deliberately dull: take the mechanics, never the model.
 
 `src/plugins/example.txt` holds them as one file, every path and every line, so
-they can be read without walking the tree. `pnpm plugins:unpack` rebuilds the
-folders from it; `pnpm plugins:pack` writes them back into it and removes the
+they can be read without walking the tree. `pnpm unpack:plugins` rebuilds the
+folders from it; `pnpm pack:plugins` writes them back into it and removes the
 folders, so there is one copy rather than two that drift apart. Pack names
-other plugins to fold them away the same way: `pnpm plugins:pack billing`.
+other plugins to fold them away the same way: `pnpm pack:plugins billing`.
+
+`src/utils/` packs the same way, through `pnpm pack:utils`.
