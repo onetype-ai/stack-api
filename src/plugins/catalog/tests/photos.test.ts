@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 
 import { photos } from "../tables/photos";
 
+import type { Inside } from "../types/Context";
+
 import { caller, serving, type Serving } from "./serving";
 
 let api: Serving;
@@ -67,10 +69,8 @@ describe("a photo", () =>
 
         // Asked for by the dead id: a row left behind is still reachable, and
         // is inherited by whatever takes that id next.
-        const left = await api.kernel.context("catalog", caller()).db
-            .select()
-            .from(photos)
-            .where(eq(photos.productId, id));
+        const inside = api.kernel.context("catalog", caller()) as unknown as Inside;
+        const left = await inside.db.select().from(photos).where(eq(photos.productId, id));
 
         expect(left).toEqual([]);
     });
