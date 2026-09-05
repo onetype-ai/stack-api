@@ -240,7 +240,7 @@ CREATE INDEX catalog_photos_product ON catalog_photos (shop_id, product_id, posi
 
 ==> src/plugins/catalog/routes/products.ts
 
-import { Answered, defineRoute } from "@onetype/stack-api-kit";
+import { Reply, defineRoute } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
 import { Product } from "../schemas/Product";
@@ -286,7 +286,7 @@ export const productRoutes: readonly Endpoint<CatalogContext>[] = [
         {
             const product = await ctx.services.products.get(input.id);
 
-            return new Answered(200, product, { "cache-control": "private, max-age=30" });
+            return new Reply(200, product, { "cache-control": "private, max-age=30" });
         },
     }),
     route({
@@ -317,7 +317,7 @@ export const productRoutes: readonly Endpoint<CatalogContext>[] = [
         {
             const product = await ctx.services.products.add(input.name, input.cents);
 
-            return new Answered(201, product, { location: `/catalog/products/${product.id}` });
+            return new Reply(201, product, { location: `/catalog/products/${product.id}` });
         },
     }),
     route({
@@ -1965,7 +1965,7 @@ ALTER TABLE orders_orders ADD COLUMN paying TEXT;
 
 ==> src/plugins/orders/routes/orders.ts
 
-import { Answered, defineRoute } from "@onetype/stack-api-kit";
+import { Reply, defineRoute } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
 import { Order } from "../schemas/Order";
@@ -2002,7 +2002,7 @@ export const orderRoutes: readonly Endpoint<OrderContext>[] = [
         {
             const order = await ctx.services.orders.reserve(input.productId);
 
-            return new Answered(201, order, { location: `/orders/${order.id}` });
+            return new Reply(201, order, { location: `/orders/${order.id}` });
         },
     }),
     route({
@@ -2427,7 +2427,7 @@ export const orders = sqliteTable("orders_orders", {
     index("orders_orders_shop").on(table.shopId, table.sequence),
 ]);
 
-==> src/plugins/orders/tests/crossings.test.ts
+==> src/plugins/orders/tests/boundaries.test.ts
 
 import { afterEach, describe, expect, test } from "vitest";
 
