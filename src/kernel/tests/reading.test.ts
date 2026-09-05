@@ -26,9 +26,9 @@ describe("a number read from the environment", () =>
 
     test("and refused when it is not a whole number at all", () =>
     {
-        for (const wrong of ["abc", "-1", "1.5", "1e999"])
+        for (const bad of ["abc", "-1", "1.5", "1e999"])
         {
-            process.env.PROBE = wrong;
+            process.env.PROBE = bad;
 
             expect(() => Env.number("PROBE", 1)).toThrow(/PROBE/);
         }

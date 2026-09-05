@@ -8,7 +8,7 @@ import type { Failure, Logger, RunningApp } from "@onetype/stack-api-kit";
 
 type Server = ReturnType<typeof serve>;
 
-class ApiRunner
+class Api
 {
     patience = 10_000;
     draining = 250;
@@ -58,12 +58,12 @@ class ApiRunner
         /* Zero turns it off on purpose. */
         if (settings.watchSeconds > 0)
         {
-            this.watching(api, log, settings.watchSeconds * 1000);
+            this.watch(api, log, settings.watchSeconds * 1000);
         }
 
         log.info("listening", { port: settings.port, routes: api.kernel.routes().length });
 
-        this.closing(server, api, log);
+        this.closeOnSignal(server, api, log);
     }
 
     /* Counted, not compared: stamps are milliseconds and a burst shares one. */
@@ -72,11 +72,11 @@ class ApiRunner
         return { fresh: failures.slice(read), read: failures.length };
     }
 
-    watching(api: RunningApp, log: Logger, every: number): NodeJS.Timeout
+    watch(api: RunningApp, log: Logger, every: number): NodeJS.Timeout
     {
         let read = 0;
 
-        const beat = setInterval(() =>
+        const timer = setInterval(() =>
         {
             const failures = api.kernel.events.failures();
 
@@ -100,12 +100,12 @@ class ApiRunner
             }
         }, every);
 
-        beat.unref();
+        timer.unref();
 
-        return beat;
+        return timer;
     }
 
-    closing(server: Server, api: RunningApp, log: Logger): void
+    closeOnSignal(server: Server, api: RunningApp, log: Logger): void
     {
         let closing = false;
 
@@ -157,16 +157,16 @@ class ApiRunner
     }
 
     /* JSON like every other line, so a collector keeps it. */
-    failed(cause: unknown): void
+    reportFailure(cause: unknown): void
     {
         process.stderr.write(Log.line("error", "the api did not start", { cause }));
         process.exit(1);
     }
 }
 
-export const Api = new ApiRunner();
+export const api = new Api();
 
-Api.open().catch((cause: unknown) =>
+api.open().catch((cause: unknown) =>
 {
-    Api.failed(cause);
+    api.reportFailure(cause);
 });

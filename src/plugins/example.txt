@@ -14,17 +14,17 @@ import { z } from "zod";
 
 import { BeforeList } from "./schemas/BeforeList";
 import { Config } from "./schemas/Config";
-import { PhotosService } from "./services/photos";
-import { ProductsService } from "./services/products";
+import { Photos } from "./services/photos";
+import { Products } from "./services/products";
 import { productRoutes } from "./routes/products";
 import { photos } from "./tables/photos";
 import { products } from "./tables/products";
 
 import type { CatalogContext } from "./types/Context";
-import type { Rows } from "./types/Rows";
+import type { CatalogDb } from "./types/CatalogDb";
 import type { Services } from "./types/Services";
 
-export default definePlugin.over<Rows, Services>()("catalog", {
+export default definePlugin.over<CatalogDb, Services>()("catalog", {
     version: "1.0.0",
 
     describe: "What a shop sells: products, their names in any language, and their prices.",
@@ -50,7 +50,7 @@ export default definePlugin.over<Rows, Services>()("catalog", {
 
     services: (ctx) =>
     {
-        return { products: new ProductsService(ctx), photos: new PhotosService(ctx) };
+        return { products: new Products(ctx), photos: new Photos(ctx) };
     },
 
     routes: [...productRoutes],
@@ -504,7 +504,7 @@ import type { SQL } from "drizzle-orm";
 
 type Row = typeof photos.$inferSelect;
 
-export class PhotosService
+export class Photos
 {
     static #most = 50;
 
@@ -515,9 +515,9 @@ export class PhotosService
         this.#ctx = ctx;
     }
 
-    async of(productId: string): Promise<Photo[]>
+    async forProduct(productId: string): Promise<Photo[]>
     {
-        await this.#whereCaller(productId);
+        await this.#mustOwn(productId);
 
         const rows = await this.#ctx.db
             .select()
@@ -530,7 +530,7 @@ export class PhotosService
 
     async add(productId: string, url: string): Promise<Photo>
     {
-        await this.#whereCaller(productId);
+        await this.#mustOwn(productId);
 
         /* A service is reached without a route, so it says no itself. */
         const checked = Photo.schema.shape.url.safeParse(url);
@@ -547,9 +547,9 @@ export class PhotosService
                 .from(photos)
                 .where(and(eq(photos.productId, productId), this.#whereShop()));
 
-            if ((total?.many ?? 0) >= PhotosService.#most)
+            if ((total?.many ?? 0) >= Photos.#most)
             {
-                throw new Refusal(409, "TOO_MANY", `A product carries at most ${String(PhotosService.#most)} photos.`);
+                throw new Refusal(409, "TOO_MANY", `A product carries at most ${String(Photos.#most)} photos.`);
             }
 
             const [last] = await inside.db
@@ -582,7 +582,7 @@ export class PhotosService
         return removed.length;
     }
 
-    async #whereCaller(productId: string): Promise<void>
+    async #mustOwn(productId: string): Promise<void>
     {
         const [rows] = await this.#ctx.db
             .select({ id: products.id })
@@ -621,14 +621,14 @@ import { photos } from "../tables/photos";
 import { products } from "../tables/products";
 
 import type { CatalogContext } from "../types/Context";
-import type { Listing } from "../types/Listing";
+import type { ProductQuery } from "../types/ProductQuery";
 import type { ProductPage } from "../schemas/ProductPage";
 import type { SQL } from "drizzle-orm";
 
 
 type Row = typeof products.$inferSelect;
 
-export class ProductsService
+export class Products
 {
     readonly #ctx: CatalogContext;
 
@@ -637,7 +637,7 @@ export class ProductsService
         this.#ctx = ctx;
     }
 
-    async list(query: Listing): Promise<ProductPage>
+    async list(query: ProductQuery): Promise<ProductPage>
     {
         const rows = await this.#ctx.db
             .select()
@@ -774,7 +774,7 @@ export class ProductsService
 
             const now = Status.schema.parse(before.status);
 
-            if (!ProductsService.#next[now].includes(status))
+            if (!Products.#next[now].includes(status))
             {
                 throw new Refusal(
                     409,
@@ -980,14 +980,14 @@ describe("a shop's limit", () =>
     {
         api = await startApi({ maxPerShop: 3 });
 
-        const adding = Array.from({ length: 10 }, () => api.kernel.handle({
+        const sending = Array.from({ length: 10 }, () => api.kernel.handle({
             method: "POST",
             path: "/catalog/products",
             input: { name: `P ${crypto.randomUUID()}`, cents: 100 },
             caller: caller(),
         }));
 
-        const answers = await Promise.all(adding);
+        const answers = await Promise.all(sending);
 
         expect(answers.filter((answer) => answer.status === 201)).toHaveLength(3);
     });
@@ -1161,7 +1161,7 @@ afterEach(async () =>
     await api.stop();
 });
 
-function catalog(): { photos: { add: (id: string, url: string) => Promise<unknown>; of: (id: string) => Promise<unknown[]> } }
+function catalog(): { photos: { add: (id: string, url: string) => Promise<unknown>; forProduct: (id: string) => Promise<unknown[]> } }
 {
     return api.kernel.context("catalog", caller()).services as never;
 }
@@ -1481,7 +1481,7 @@ import catalog from "../plugin";
 
 import type { TestKernel, Caller } from "@onetype/stack-api-kit/testing";
 import type { Config } from "../schemas/Config";
-import type { Rows } from "../types/Rows";
+import type { CatalogDb } from "../types/CatalogDb";
 
 export type TestApi = TestKernel;
 
@@ -1508,9 +1508,9 @@ export function nobody(): Caller
     return createCaller(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");
 }
 
-export function rows(api: TestApi): Rows
+export function rows(api: TestApi): CatalogDb
 {
-    return api.kernel.context("catalog").db as Rows;
+    return api.kernel.context("catalog").db as CatalogDb;
 }
 
 ==> src/plugins/catalog/tests/text.test.ts
@@ -1668,43 +1668,43 @@ describe("length", () =>
     });
 });
 
-==> src/plugins/catalog/types/Context.ts
-
-import type { Context } from "@onetype/stack-api-kit";
-
-import type { Config } from "../schemas/Config";
-import type { Rows } from "./Rows";
-import type { Services } from "./Services";
-
-export type CatalogContext = Context<Config, Services, Rows>;
-
-==> src/plugins/catalog/types/Listing.ts
-
-import type { Status } from "../schemas/Status";
-
-export type Listing = {
-    locale: string;
-    status?: Status;
-    after?: string;
-};
-
-==> src/plugins/catalog/types/Rows.ts
+==> src/plugins/catalog/types/CatalogDb.ts
 
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type { photos } from "../tables/photos";
 import type { products } from "../tables/products";
 
-export type Rows = BetterSQLite3Database<{ products: typeof products; photos: typeof photos }>;
+export type CatalogDb = BetterSQLite3Database<{ products: typeof products; photos: typeof photos }>;
+
+==> src/plugins/catalog/types/Context.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Config } from "../schemas/Config";
+import type { CatalogDb } from "./CatalogDb";
+import type { Services } from "./Services";
+
+export type CatalogContext = Context<Config, Services, CatalogDb>;
+
+==> src/plugins/catalog/types/ProductQuery.ts
+
+import type { Status } from "../schemas/Status";
+
+export type ProductQuery = {
+    locale: string;
+    status?: Status;
+    after?: string;
+};
 
 ==> src/plugins/catalog/types/Services.ts
 
-import type { PhotosService } from "../services/photos";
-import type { ProductsService } from "../services/products";
+import type { Photos } from "../services/photos";
+import type { Products } from "../services/products";
 
 export type Services = {
-    products: ProductsService;
-    photos: PhotosService;
+    products: Products;
+    photos: Photos;
 };
 
 ==> src/plugins/catalog/utils/Paging.ts
@@ -1733,16 +1733,16 @@ import { defineCommand, defineListener, defineParticipant, definePlugin } from "
 import { z } from "zod";
 
 import { Config } from "./schemas/Config";
-import { OrdersService } from "./services/orders";
+import { OrderBook } from "./services/orders";
 import { ReservationCounter } from "./services/ReservationCounter";
 import { orderRoutes } from "./routes/orders";
 import { orders } from "./tables/orders";
 
 import type { OrderContext } from "./types/Context";
-import type { Rows } from "./types/Rows";
+import type { OrderDb } from "./types/OrderDb";
 import type { Services } from "./types/Services";
 
-export default definePlugin.over<Rows, Services>()("orders", {
+export default definePlugin.over<OrderDb, Services>()("orders", {
     version: "1.0.0",
 
     describe: "Holding a product, paying for it, and letting go when nobody does.",
@@ -1770,7 +1770,7 @@ export default definePlugin.over<Rows, Services>()("orders", {
 
     services: (ctx) =>
     {
-        return { orders: new OrdersService(ctx) };
+        return { orders: new OrderBook(ctx) };
     },
 
     routes: [...orderRoutes],
@@ -1806,8 +1806,8 @@ export default definePlugin.over<Rows, Services>()("orders", {
             describe: "Lets go of every hold on a product that no longer exists.",
             handle: async (gone, ctx) =>
             {
-                const acting = ctx.forScope(gone.shopId);
-                const dropped = await acting.services.orders.dropFor(gone.id);
+                const scoped = ctx.forScope(gone.shopId);
+                const dropped = await scoped.services.orders.dropFor(gone.id);
 
                 if (dropped > 0)
                 {
@@ -2124,7 +2124,7 @@ import type { Status } from "../schemas/Status";
 
 type Row = typeof orders.$inferSelect;
 
-export class OrdersService
+export class OrderBook
 {
     readonly #ctx: OrderContext;
 
@@ -2646,7 +2646,7 @@ describe("what the partner says is input", () =>
     });
 });
 
-==> src/plugins/orders/tests/holding.test.ts
+==> src/plugins/orders/tests/holds.test.ts
 
 import { afterEach, describe, expect, test } from "vitest";
 
@@ -2777,7 +2777,7 @@ afterEach(async () =>
 
 const shopper = caller("acme");
 
-function counting(): () => unknown
+function countingPayer(): () => unknown
 {
     return () =>
     {
@@ -2792,7 +2792,7 @@ function pay(id: string): Promise<{ status: number }>
     return api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 }
 
-function seen(): Promise<{ body: unknown }>
+function orderPage(): Promise<{ body: unknown }>
 {
     return api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
 }
@@ -2810,7 +2810,7 @@ describe("an order paid from two places at once", () =>
 {
     test("is charged once, whatever the timing", async () =>
     {
-        api = await startApi({ payments: PAYMENTS }, undefined, counting());
+        api = await startApi({ payments: PAYMENTS }, undefined, countingPayer());
 
         const id = await reserved(api, shopper);
 
@@ -2821,7 +2821,7 @@ describe("an order paid from two places at once", () =>
 
     test("and cannot be paid after it was cancelled", async () =>
     {
-        api = await startApi({ payments: PAYMENTS }, undefined, counting());
+        api = await startApi({ payments: PAYMENTS }, undefined, countingPayer());
 
         const id = await reserved(api, shopper);
 
@@ -2830,7 +2830,7 @@ describe("an order paid from two places at once", () =>
             api.kernel.handle({ method: "DELETE", path: "/orders/:id", input: { id }, caller: shopper }),
         ]);
 
-        const answer = await seen();
+        const answer = await orderPage();
         const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === id);
 
         expect(["paid", "cancelled"]).toContain(row?.status);
@@ -2874,7 +2874,7 @@ describe("reserving a product", () =>
 {
     test("refuses one taken off the shelves while the request was in flight", async () =>
     {
-        api = await startApi({ payments: PAYMENTS }, undefined, counting());
+        api = await startApi({ payments: PAYMENTS }, undefined, countingPayer());
 
         const product = await listed(api, shopper);
 
@@ -2927,7 +2927,7 @@ describe("a card the bank refused", () =>
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 
-        const answer = await seen();
+        const answer = await orderPage();
         const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === id);
 
         expect(row?.status).toBe("reserved");
@@ -3068,23 +3068,23 @@ export async function reserved(api: TestApi, shopper = caller()): Promise<string
 import type { Context } from "@onetype/stack-api-kit";
 
 import type { Config } from "../schemas/Config";
-import type { Rows } from "./Rows";
+import type { OrderDb } from "./OrderDb";
 import type { Services } from "./Services";
 
-export type OrderContext = Context<Config, Services, Rows>;
+export type OrderContext = Context<Config, Services, OrderDb>;
 
-==> src/plugins/orders/types/Rows.ts
+==> src/plugins/orders/types/OrderDb.ts
 
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type { orders } from "../tables/orders";
 
-export type Rows = BetterSQLite3Database<{ orders: typeof orders }>;
+export type OrderDb = BetterSQLite3Database<{ orders: typeof orders }>;
 
 ==> src/plugins/orders/types/Services.ts
 
-import type { OrdersService } from "../services/orders";
+import type { OrderBook } from "../services/orders";
 
 export type Services = {
-    orders: OrdersService;
+    orders: OrderBook;
 };

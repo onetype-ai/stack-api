@@ -13,10 +13,10 @@ describe.skipIf(!unpacked)("the documents this project ships", () =>
 {
     test("hold to what they say about themselves", () =>
     {
-        const wrong = Project.checks().filter((problem) =>
+        const problems = Project.checks().filter((problem) =>
             !(problem.check === "oversized" && [...LONGER].some((named) => problem.message.startsWith(named))));
 
-        expect(wrong).toEqual([]);
+        expect(problems).toEqual([]);
     });
 
     test("and the reference stays a reference, not a book", () =>

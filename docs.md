@@ -31,14 +31,14 @@ proxy, a caller invents a new key per request.
 Create `src/plugins/<name>/plugin.ts` and export a `definePlugin` result.
 
 ```ts
-export default definePlugin.over<Rows, Services>()("billing", {
+export default definePlugin.over<BillingDb, Services>()("billing", {
     version: "1.0.0",
     describe: "Invoices and payment methods.",
     dependsOn: ["auth"],
     tables: { invoices },
     migrations: "./src/plugins/billing/migrations",
     permissions: { "billing.read": { describe: "See invoices." } },
-    services: (ctx) => ({ invoices: new InvoicesService(ctx) }),
+    services: (ctx) => ({ invoices: new Invoices(ctx) }),
     routes: [...invoiceRoutes],
 });
 ```
@@ -399,7 +399,7 @@ kernel refuses to start, naming the plugin and the cause. `over` names what
 infers them.
 
 ```ts
-export default definePlugin.over<Rows, Services>()("catalog", { … });
+export default definePlugin.over<CatalogDb, Services>()("catalog", { … });
 ```
 
 ## Keys
@@ -575,11 +575,11 @@ Folder and `name` are the same word, lowercase. The ban on `utils` and
 cannot be named in one word is two plugins.
 
 A file inside carries no plugin prefix: `schemas/Item.ts`, not
-`schemas/DemoItem.ts`. It goes back on at `index.ts`, where a consumer sees
-the name out of context.
+`schemas/DemoItem.ts`. It returns at `index.ts`, where a consumer sees it out
+of context.
 
-A service is a class: `ctx` in the constructor, `#private` for what only it
-calls. A util is a class too, holding no `ctx` and exported already built:
+A service is a class named for its subject, not suffixed. `ctx` in its
+constructor, `#private` for what only it calls. A util is a class too, holding no `ctx` and exported already built:
 
 ```ts
 class Folding { searched(raw: string): string { … } }
@@ -587,8 +587,8 @@ class Folding { searched(raw: string): string { … } }
 export const Text = new Folding();
 ```
 
-Everything else is an object with methods. Imports: values, then types,
-then the file's own, then its one export. Allman braces.
+Everything else is an object of methods. Imports: values, types, the file's
+own, then its export. Allman braces.
 
 ==> #docs/procedures/plugin/text.md
 
