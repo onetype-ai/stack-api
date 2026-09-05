@@ -11,6 +11,7 @@ type Server = ReturnType<typeof serve>;
 class ApiRunner
 {
     patience = 10_000;
+    draining = 250;
 
     from(behindProxy: boolean)
     {
@@ -124,7 +125,15 @@ class ApiRunner
             forced.unref();
 
             api.stop().then(
-                () => { process.exit(0); },
+                async () =>
+                {
+                    // The kernel is done, but a reply it produced may still be
+                    // on its way out. Leaving before it lands resets the socket,
+                    // so a caller who sent a write never learns whether it took.
+                    await new Promise((settle) => setTimeout(settle, this.draining));
+
+                    process.exit(0);
+                },
                 (cause: unknown) =>
                 {
                     log.error("stop failed", { signal, cause });
