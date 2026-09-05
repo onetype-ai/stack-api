@@ -542,17 +542,17 @@ export class PhotosService
 
         return this.#ctx.tx(async (inside) =>
         {
-            const [counted] = await inside.db
+            const [total] = await inside.db
                 .select({ many: count() })
                 .from(photos)
                 .where(and(eq(photos.productId, productId), this.#whereShop()));
 
-            if ((counted?.many ?? 0) >= PhotosService.#most)
+            if ((total?.many ?? 0) >= PhotosService.#most)
             {
                 throw new Refusal(409, "TOO_MANY", `A product carries at most ${String(PhotosService.#most)} photos.`);
             }
 
-            const [highest] = await inside.db
+            const [last] = await inside.db
                 .select({ at: max(photos.position) })
                 .from(photos)
                 .where(and(eq(photos.productId, productId), this.#whereShop()));
@@ -561,7 +561,7 @@ export class PhotosService
                 id: crypto.randomUUID(),
                 productId,
                 url: checked.data,
-                position: (highest?.at ?? -1) + 1,
+                position: (last?.at ?? -1) + 1,
 
                 ...this.#ctx.stamped("photos"),
             } as Row;
@@ -669,10 +669,10 @@ export class ProductsService
 
     async matching(text: string): Promise<Product[]> 
     {
-        const looking = Text.searched(text);
+        const needle = Text.searched(text);
 
         /* Everything holds "", so a folded-away search would answer with the shop. */
-        if (looking === "")
+        if (needle === "")
         {
             return [];
         }
@@ -680,19 +680,19 @@ export class ProductsService
         const rows = await this.#ctx.db.select().from(products).where(this.#whereShop());
 
         return rows
-            .filter((row) => row.searched.includes(looking))
+            .filter((row) => row.searched.includes(needle))
             .map((row) => this.#toProduct(row));
     }
 
     async add(name: string, cents: number): Promise<Product> 
     {
-        const clean = Product.parseName(name);
-        const searched = Text.searched(clean);
-        const same = Text.same(clean);
+        const parsed = Product.parseName(name);
+        const searched = Text.searched(parsed);
+        const same = Text.same(parsed);
 
         const refusal = await this.#ctx.hooks.run("catalog.product.before-list", {
             id: crypto.randomUUID(),
-            name: clean,
+            name: parsed,
             cents,
         });
 
@@ -704,12 +704,12 @@ export class ProductsService
         return this.#ctx.tx(async (inside) =>
         {
             /* Counted inside: the hook counts before it opens, so ten at once all pass. */
-            const [counted] = await inside.db
+            const [total] = await inside.db
                 .select({ many: count() })
                 .from(products)
                 .where(this.#whereShop());
 
-            if ((counted?.many ?? 0) >= this.#ctx.config.maxPerShop)
+            if ((total?.many ?? 0) >= this.#ctx.config.maxPerShop)
             {
                 throw new Refusal(
                     409,
@@ -718,20 +718,20 @@ export class ProductsService
                 );
             }
 
-            const [highest] = await inside.db
+            const [last] = await inside.db
                 .select({ at: max(products.sequence) })
                 .from(products)
                 .where(this.#whereShop());
 
             const row = {
                 id: crypto.randomUUID(),
-                name: clean,
+                name: parsed,
                 searched,
                 same,
                 cents,
                 status: "draft",
                 createdAt: new Date(this.#ctx.now()).toISOString(),
-                sequence: (highest?.at ?? 0) + 1,
+                sequence: (last?.at ?? 0) + 1,
 
                 /* From the caller, never the input: otherwise a row lands in another shop. */
                 ...this.#ctx.stamped("products"),
@@ -1060,7 +1060,7 @@ describe("two names that read the same", () =>
 
 describe("what a name costs to store", () =>
 {
-    test("is counted, and not only what a reader sees", () =>
+    test("is total, and not only what a reader sees", () =>
     {
         const marked = `a${"́".repeat(3000)}`;
 
@@ -1214,8 +1214,8 @@ describe("a photo", () =>
         await api.kernel.handle({ method: "DELETE", path: "/catalog/products/:id", input: { id }, caller: caller() });
 
         /* The dead id: a row left behind is inherited by whatever takes it next. */
-        const inside = api.kernel.context("catalog", caller()) as unknown as CatalogContext;
-        const left = await inside.db.select().from(photos).where(eq(photos.productId, id));
+        const db = api.kernel.context("catalog", caller()) as unknown as CatalogContext;
+        const left = await db.db.select().from(photos).where(eq(photos.productId, id));
 
         expect(left).toEqual([]);
     });
@@ -1270,7 +1270,7 @@ describe("authentication", () =>
 
 describe("permissions", () =>
 {
-    test("refuses a reader who tries to write, naming no permission", async () =>
+    test("refuses a reader shopper tries to write, naming no permission", async () =>
     {
         const reader = createCaller(["catalog.read"], "u2", { shopId: "acme" });
 
@@ -1430,12 +1430,12 @@ describe("what a shop may reach", () =>
     {
         api = await startApi();
 
-        const theirs = await added("other", "Theirs");
+        const otherOrder = await added("other", "Theirs");
 
         const answer = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products/:id",
-            input: { id: theirs },
+            input: { id: otherOrder },
             caller: caller("acme"),
         });
 
@@ -2139,7 +2139,7 @@ export class OrdersService
         const now = this.#ctx.now();
 
         /* A hold past its moment reads as gone, swept or not. */
-        const [counted] = await this.#ctx.db
+        const [total] = await this.#ctx.db
             .select({ total: count() })
             .from(orders)
             .where(and(this.#whereShop("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
@@ -2148,7 +2148,7 @@ export class OrdersService
             orders: rows.map((row) => this.#toOrder(
                 row.status === "reserved" && row.holdsUntil <= now ? { ...row, status: "expired" } : row,
             )),
-            reserved: counted?.total ?? 0,
+            reserved: total?.total ?? 0,
         };
     }
 
@@ -2185,7 +2185,7 @@ export class OrdersService
                 throw new Refusal(409, "NOT_FOR_SALE", "That product is not for sale.");
             }
 
-            const [highest] = await inside.db
+            const [last] = await inside.db
                 .select({ at: max(orders.sequence) })
                 .from(orders)
                 .where(this.#whereShop());
@@ -2197,7 +2197,7 @@ export class OrdersService
                 status: "reserved",
                 holdsUntil,
                 createdAt: new Date(this.#ctx.now()).toISOString(),
-                sequence: (highest?.at ?? 0) + 1,
+                sequence: (last?.at ?? 0) + 1,
                 ...this.#ctx.stamped("orders"),
             } as Row;
 
@@ -2661,13 +2661,13 @@ afterEach(async () =>
     clock = 1_700_000_000_000;
 });
 
-async function listed(who = caller()): Promise<string> 
+async function listed(shopper = caller()): Promise<string> 
 {
     const created = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `A product ${crypto.randomUUID()}`, cents: 2500 },
-        caller: who,
+        caller: shopper,
     });
 
     const product = created.body as { id: string };
@@ -2676,27 +2676,27 @@ async function listed(who = caller()): Promise<string>
         method: "PATCH",
         path: "/catalog/products/:id",
         input: { id: product.id, status: "listed" },
-        caller: who,
+        caller: shopper,
     });
 
     return product.id;
 }
 
-async function reserved(who = caller()): Promise<{ id: string }>
+async function reserved(shopper = caller()): Promise<{ id: string }>
 {
     const answer = await api.kernel.handle({
         method: "POST",
         path: "/orders",
-        input: { productId: await listed(who) },
-        caller: who,
+        input: { productId: await listed(shopper) },
+        caller: shopper,
     });
 
     return answer.body as { id: string };
 }
 
-async function statusOf(id: string, who = caller()): Promise<string>
+async function statusOf(id: string, shopper = caller()): Promise<string>
 {
-    const answer = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+    const answer = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
     const page = answer.body as { orders: { id: string; status: string }[] };
 
     return page.orders.find((order) => order.id === id)?.status ?? "gone";
@@ -2775,7 +2775,7 @@ afterEach(async () =>
     clock = 1_700_000_000_000;
 });
 
-const who = caller("acme");
+const shopper = caller("acme");
 
 function counting(): () => unknown
 {
@@ -2789,18 +2789,18 @@ function counting(): () => unknown
 
 function pay(id: string): Promise<{ status: number }>
 {
-    return api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+    return api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 }
 
 function seen(): Promise<{ body: unknown }>
 {
-    return api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+    return api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
 }
 
 async function status(id: string): Promise<string | undefined>
 {
-    const inside = api.kernel.context("orders", who) as unknown as OrderContext;
-    const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
+    const db = api.kernel.context("orders", shopper) as unknown as OrderContext;
+    const [row] = await db.db.select().from(orders).where(eq(orders.id, id));
 
     return row?.status;
 }
@@ -2812,7 +2812,7 @@ describe("an order paid from two places at once", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, counting());
 
-        const id = await reserved(api, who);
+        const id = await reserved(api, shopper);
 
         await Promise.all([pay(id), pay(id)]);
 
@@ -2823,11 +2823,11 @@ describe("an order paid from two places at once", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, counting());
 
-        const id = await reserved(api, who);
+        const id = await reserved(api, shopper);
 
         await Promise.all([
-            api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who }),
-            api.kernel.handle({ method: "DELETE", path: "/orders/:id", input: { id }, caller: who }),
+            api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper }),
+            api.kernel.handle({ method: "DELETE", path: "/orders/:id", input: { id }, caller: shopper }),
         ]);
 
         const answer = await seen();
@@ -2849,19 +2849,19 @@ describe("releasing holds that have run out", () =>
 
         /* Both are old enough, and the sweep runs on schedule with nobody calling. */
         await reserved(api, acme);
-        const theirs = await reserved(api, other);
+        const otherOrder = await reserved(api, other);
 
         clock += 601_000;
 
         await api.due();
 
         const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
-        const row = (listing.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === theirs);
+        const row = (listing.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === otherOrder);
 
         expect(row?.status).toBe("expired");
     });
 
-    test("and refuses a caller reaching for a shop that is not theirs", async () =>
+    test("and refuses a caller reaching for a shop that is not otherOrder", async () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
@@ -2876,11 +2876,11 @@ describe("reserving a product", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, counting());
 
-        const product = await listed(api, who);
+        const product = await listed(api, shopper);
 
         const [reserving] = await Promise.all([
-            api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: who }),
-            api.kernel.handle({ method: "PATCH", path: "/catalog/products/:id", input: { id: product, status: "withdrawn" }, caller: who }),
+            api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: shopper }),
+            api.kernel.handle({ method: "PATCH", path: "/catalog/products/:id", input: { id: product, status: "withdrawn" }, caller: shopper }),
         ]);
 
         if (reserving.status !== 201)
@@ -2889,7 +2889,7 @@ describe("reserving a product", () =>
         }
 
         const id = (reserving.body as { id: string }).id;
-        const paid = await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+        const paid = await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 
         expect(paid.status).not.toBe(201);
     });
@@ -2906,9 +2906,9 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const id = await reserved(api, who);
+        const id = await reserved(api, shopper);
 
-        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 
         /* The row itself: a shop is listing nothing of an expired hold. */
         expect(await status(id)).toBe("expired");
@@ -2923,9 +2923,9 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const id = await reserved(api, who);
+        const id = await reserved(api, shopper);
 
-        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 
         const answer = await seen();
         const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === id);
@@ -2940,11 +2940,11 @@ describe("what a shop is listing", () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
-        const id = await reserved(api, who);
+        const id = await reserved(api, shopper);
 
         clock += 601_000;
 
-        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
         const answer = listing.body as { reserved: number; orders: { id: string; status: string }[] };
         const row = answer.orders.find((order) => order.id === id);
 
@@ -2974,21 +2974,21 @@ describe("a slow refusal", () =>
             return { paid: true, reference: "r" };
         });
 
-        const id = await reserved(api, who);
-        const slowly = pay(id);
+        const id = await reserved(api, shopper);
+        const paying = pay(id);
 
         await new Promise((keep) => setTimeout(keep, 5));
 
         /* The first payer still waits, so put it back and let a second win it. */
-        const inside = api.kernel.context("orders", who) as unknown as OrderContext;
+        const db = api.kernel.context("orders", shopper) as unknown as OrderContext;
 
-        await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));
+        await db.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));
 
-        const quickly = await pay(id);
+        const second = await pay(id);
 
-        await slowly;
+        await paying;
 
-        expect([quickly.status, await status(id), charges]).toEqual([201, "paid", 1]);
+        expect([second.status, await status(id), charges]).toEqual([201, "paid", 1]);
     });
 });
 
@@ -3029,13 +3029,13 @@ export function caller(
 }
 
 /** A product this shop sells, listed and ready to be ordered. */
-export async function listed(api: TestApi, who = caller(), cents = 2500): Promise<string>
+export async function listed(api: TestApi, shopper = caller(), cents = 2500): Promise<string>
 {
     const created = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `P ${crypto.randomUUID()}`, cents },
-        caller: who,
+        caller: shopper,
     });
 
     const product = created.body as { id: string };
@@ -3044,20 +3044,20 @@ export async function listed(api: TestApi, who = caller(), cents = 2500): Promis
         method: "PATCH",
         path: "/catalog/products/:id",
         input: { id: product.id, status: "listed" },
-        caller: who,
+        caller: shopper,
     });
 
     return product.id;
 }
 
 /** One of those, held for the caller. */
-export async function reserved(api: TestApi, who = caller()): Promise<string>
+export async function reserved(api: TestApi, shopper = caller()): Promise<string>
 {
     const created = await api.kernel.handle({
         method: "POST",
         path: "/orders",
-        input: { productId: await listed(api, who) },
-        caller: who,
+        input: { productId: await listed(api, shopper) },
+        caller: shopper,
     });
 
     return (created.body as { id: string }).id;
