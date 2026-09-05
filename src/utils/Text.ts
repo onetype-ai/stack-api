@@ -1,26 +1,3 @@
-# Ordering, Text packed
-
-Every file of these utils, one after another. A line starting
-with "==> " opens a file and names its path; everything until the next
-such line is that file, byte for byte.
-
-Rebuild it with:     node tools/pack/utils.mjs unpack
-Rewrite this with:   node tools/pack/utils.mjs pack Ordering Text
-
-==> src/utils/Ordering.ts
-
-class OrderingUtil
-{
-    by(locale: string): Intl.Collator
-    {
-        return new Intl.Collator(locale === "sr" ? "sr-Latn" : locale, { sensitivity: "variant" });
-    }
-}
-
-export const Ordering = new OrderingUtil();
-
-==> src/utils/Text.ts
-
 class TextUtil
 {
     searched(raw: string): string
