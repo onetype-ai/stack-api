@@ -9,7 +9,7 @@ Rewrite this with:   node tools/pack/plugins.mjs pack catalog orders
 
 ==> src/plugins/catalog/plugin.ts
 
-import { defineCommand, defineParticipant, definePlugin } from "@onetype/stack-api-kit";
+import { defineCommand, definePlugin } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
 import { BeforeList } from "./schemas/BeforeList";
@@ -81,20 +81,6 @@ export default definePlugin.over<CatalogDb, Services>()("catalog", {
         },
     },
 
-    participates: {
-        "catalog.product.before-list": defineParticipant<CatalogContext>()(BeforeList.schema, {
-            describe: "Refuses a shop that already holds as many products as its config allows.",
-            handle: async (_asked, ctx) =>
-            {
-                const many = await ctx.services.products.countForThisShop();
-
-                return many >= ctx.config.maxPerShop
-                    ? `This shop already holds ${String(many)} products, which is the most it may have.`
-                    : undefined;
-            },
-        }),
-    },
-
     commands: {
         "catalog.withdraw-drafts": defineCommand<CatalogContext>()({
             describe: "Withdraws every product this shop left in draft.",
@@ -159,7 +145,7 @@ Every read answers only the caller's shop.
   schema as well as the parser, because `.max()` counts UTF-16 units.
 - **A cursor, not an offset** — order is decided in the service, so a page
   number would shift the moment a product is written ahead of it.
-- **Answered** — a 201 carrying `location`, which no schema can express.
+- **Reply** — a 201 carrying `location`, which no schema can express.
 - **hooks, commands, events** — each declared once, each with a test.
 
 ## Refuses
@@ -170,6 +156,7 @@ Every read answers only the caller's shop.
 - Another shop's product: 404, the same answer as one that never existed.
 - A name over 120 characters, or empty once trimmed: 400.
 - A second product whose name differs only by case, width or ligature: 409.
+- A name mixing alphabets inside one word: 400.
 
 ==> src/plugins/catalog/index.ts
 

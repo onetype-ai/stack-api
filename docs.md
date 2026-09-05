@@ -595,7 +595,7 @@ Mechanical, so no plugin forgets:
   `authorization` is refused at startup.
 - **Outbound** reaches only what the plugin declared, and `ctx.fetch` never
   follows a redirect: the kernel checked the first url, never the second.
-- **Bodies** are bounded before parsing; secrets compared with `same`.
+- **Bodies** are bounded before parsing; secrets compared with `equalsInConstantTime`.
 - **Writes** are serialised: one request's query cannot land inside another's
   transaction.
 
@@ -676,7 +676,7 @@ return new Reply(201, item, { location: `/items/${item.id}` });
 `Refusal(status, code, message, fields?)`: only a `Refusal` speaks to a
 caller, any other error answers a fixed 500. `fields` maps an input name to
 what to do. A `Reply` sets status and headers; it still passes the output
-schema and may not set what the kit owns, like `content-type`. `POST` is 201,
+schema and may not set what the kit owns, like `set-cookie`. `POST` is 201,
 else 200.
 
 ## Imports
