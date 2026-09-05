@@ -55,9 +55,6 @@ export default tseslint.config(
     },
 
     {
-        // A test may boot a dependency it declared, which needs that
-        // plugin's contract: `index.ts` is the public API, and a kernel takes
-        // the plugin. Everything below the contract stays private.
         files: ["src/plugins/*/tests/**/*.ts"],
         rules: boundary(
             "A test may reach a plugin's contract at \"@plugins/<name>/plugin\", and nothing deeper. Whether it may reach that plugin at all is checked by Project.checks().",
@@ -66,9 +63,6 @@ export default tseslint.config(
     },
 
     {
-        // Pure and domain-free is the whole definition. A util reaching a
-        // plugin knows a domain; one reaching the kit wants a ctx, and a
-        // thing that wants a ctx is a service, which belongs to a plugin.
         files: ["src/utils/**/*.ts", "src/plugins/*/utils/**/*.ts"],
         rules: {
             "no-restricted-imports": [
