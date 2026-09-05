@@ -911,7 +911,7 @@ async function aProduct(): Promise<string>
     return (answer.body as { id: string }).id;
 }
 
-function moved(id: string, status: string): Promise<{ status: number }>
+function moveTo(id: string, status: string): Promise<{ status: number }>
 {
     return api.kernel.handle({
         method: "PATCH",
@@ -929,16 +929,16 @@ describe("a product's life", () =>
 
         const id = await aProduct();
 
-        expect((await moved(id, "listed")).status).toBe(200);
-        expect((await moved(id, "withdrawn")).status).toBe(200);
-        expect((await moved(id, "listed")).status).toBe(409);
+        expect((await moveTo(id, "listed")).status).toBe(200);
+        expect((await moveTo(id, "withdrawn")).status).toBe(200);
+        expect((await moveTo(id, "listed")).status).toBe(409);
     });
 
     test("but a shop may drop a draft it never put up", async () =>
     {
         api = await startApi();
 
-        expect((await moved(await aProduct(), "withdrawn")).status).toBe(200);
+        expect((await moveTo(await aProduct(), "withdrawn")).status).toBe(200);
     });
 
     test("and the command that drops every draft still works", async () =>
@@ -1228,7 +1228,7 @@ afterEach(async () =>
     await api.stop();
 });
 
-async function added(name = "A product"): Promise<{ id: string }>
+async function addProduct(name = "A product"): Promise<{ id: string }>
 {
     const answer = await api.kernel.handle({
         method: "POST",
@@ -1317,7 +1317,7 @@ describe("answers", () =>
 
     test("sends back only what the schema names", async () =>
     {
-        const created = await added();
+        const created = await addProduct();
 
         const answer = await api.kernel.handle({
             method: "GET",
@@ -1339,7 +1339,7 @@ describe("pages", () =>
 
         for (const name of ["Delta", "Alpha", "Echo", "Bravo", "Charlie"])
         {
-            await added(name);
+            await addProduct(name);
         }
 
         const seen: string[] = [];
@@ -1382,7 +1382,7 @@ afterEach(async () =>
     await api.stop();
 });
 
-async function added(shop: string, name: string): Promise<string>
+async function addProduct(shop: string, name: string): Promise<string>
 {
     const answer = await api.kernel.handle({
         method: "POST",
@@ -1400,8 +1400,8 @@ describe("what a shop may reach", () =>
     {
         api = await startApi();
 
-        await added("acme", "Ours");
-        await added("other", "Theirs");
+        await addProduct("acme", "Ours");
+        await addProduct("other", "Theirs");
 
         const answer = await api.kernel.handle({
             method: "GET",
@@ -1417,7 +1417,7 @@ describe("what a shop may reach", () =>
     {
         api = await startApi();
 
-        const otherOrder = await added("other", "Theirs");
+        const otherOrder = await addProduct("other", "Theirs");
 
         const answer = await api.kernel.handle({
             method: "GET",
@@ -1433,7 +1433,7 @@ describe("what a shop may reach", () =>
     {
         api = await startApi();
 
-        const ours = await added("acme", "Ours");
+        const ours = await addProduct("acme", "Ours");
 
         const listing = await api.kernel.handle({
             method: "GET",
@@ -1495,7 +1495,7 @@ export function nobody(): Caller
     return createCaller(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");
 }
 
-export function rows(api: TestApi): CatalogDb
+export function tablesOf(api: TestApi): CatalogDb
 {
     return api.kernel.context("catalog").db as CatalogDb;
 }
@@ -1525,7 +1525,7 @@ async function add(name: string): Promise<number>
     return answer.status;
 }
 
-async function named(locale?: string): Promise<string[]>
+async function namesIn(locale?: string): Promise<string[]>
 {
     const answer = await api.kernel.handle({
         method: "GET",
@@ -1548,7 +1548,7 @@ describe("ordering", () =>
             await add(name);
         }
 
-        expect(await named()).toEqual(["Apfel", "Äpfel", "Ostern", "Österreich", "Zebra"]);
+        expect(await namesIn()).toEqual(["Apfel", "Äpfel", "Ostern", "Österreich", "Zebra"]);
     });
 
     test("orders Turkish the way Turkish is ordered", async () =>
@@ -1560,7 +1560,7 @@ describe("ordering", () =>
             await add(name);
         }
 
-        expect(await named("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
+        expect(await namesIn("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
     });
 
     /* A tag naming its script gets that order; the stack picks none. */
@@ -1573,7 +1573,7 @@ describe("ordering", () =>
             await add(name);
         }
 
-        expect(await named("sr-Latn")).toEqual(["Cvet", "Čvor", "Ćuprija"]);
+        expect(await namesIn("sr-Latn")).toEqual(["Cvet", "Čvor", "Ćuprija"]);
     });
 
     test("and falls back to English rather than failing on a tag it cannot read", async () =>
@@ -1585,7 +1585,7 @@ describe("ordering", () =>
             await add(name);
         }
 
-        expect(await named("!!")).toEqual(["Alpha", "Beta"]);
+        expect(await namesIn("!!")).toEqual(["Alpha", "Beta"]);
     });
 });
 
@@ -2429,7 +2429,7 @@ afterEach(async () =>
     await api.stop();
 });
 
-async function listed(cents = 2500): Promise<string>
+async function listProduct(cents = 2500): Promise<string>
 {
     const created = await api.kernel.handle({
         method: "POST",
@@ -2459,7 +2459,7 @@ describe("the price comes from the plugin that owns it", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: await listed(4200) },
+            input: { productId: await listProduct(4200) },
             caller: caller(),
         });
 
@@ -2494,7 +2494,7 @@ describe("what it hears", () =>
     {
         api = await startApi();
 
-        const product = await listed();
+        const product = await listProduct();
 
         await api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product }, caller: caller() });
 
@@ -2541,7 +2541,7 @@ describe("the partner it dials", () =>
         const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: await listed(1750) },
+            input: { productId: await listProduct(1750) },
             caller: caller(),
         });
 
@@ -2568,7 +2568,7 @@ describe("the partner it dials", () =>
         const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: await listed() },
+            input: { productId: await listProduct() },
             caller: caller(),
         });
 
@@ -2596,7 +2596,7 @@ describe("what the partner says is input", () =>
         const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: await listed() },
+            input: { productId: await listProduct() },
             caller: caller(),
         });
 
@@ -2617,7 +2617,7 @@ describe("what the partner says is input", () =>
         const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: await listed() },
+            input: { productId: await listProduct() },
             caller: caller(),
         });
 
@@ -2648,7 +2648,7 @@ afterEach(async () =>
     clock = 1_700_000_000_000;
 });
 
-async function listed(shopper = caller()): Promise<string> 
+async function listProduct(shopper = caller()): Promise<string> 
 {
     const created = await api.kernel.handle({
         method: "POST",
@@ -2669,12 +2669,12 @@ async function listed(shopper = caller()): Promise<string>
     return product.id;
 }
 
-async function reserved(shopper = caller()): Promise<{ id: string }>
+async function reserveOrder(shopper = caller()): Promise<{ id: string }>
 {
     const answer = await api.kernel.handle({
         method: "POST",
         path: "/orders",
-        input: { productId: await listed(shopper) },
+        input: { productId: await listProduct(shopper) },
         caller: shopper,
     });
 
@@ -2695,7 +2695,7 @@ describe("a hold", () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
-        const order = await reserved();
+        const order = await reserveOrder();
 
         clock += 599_000;
 
@@ -2708,7 +2708,7 @@ describe("a hold", () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
-        const order = await reserved();
+        const order = await reserveOrder();
 
         clock += 601_000;
 
@@ -2722,7 +2722,7 @@ describe("a hold", () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
-        const order = await reserved();
+        const order = await reserveOrder();
 
         clock += 601_000;
 
@@ -2745,7 +2745,7 @@ import { eq } from "drizzle-orm";
 
 import { orders } from "../tables/orders";
 
-import { caller, listed, reserved, startApi, type TestApi } from "./setup";
+import { caller, listProduct, reserveOrder, startApi, type TestApi } from "./setup";
 
 import type { OrderContext } from "../types/Context";
 
@@ -2784,7 +2784,7 @@ function orderPage(): Promise<{ body: unknown }>
     return api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
 }
 
-async function status(id: string): Promise<string | undefined>
+async function statusOf(id: string): Promise<string | undefined>
 {
     const db = api.kernel.context("orders", shopper) as unknown as OrderContext;
     const [row] = await db.db.select().from(orders).where(eq(orders.id, id));
@@ -2799,7 +2799,7 @@ describe("an order paid from two places at once", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, countingPayer());
 
-        const id = await reserved(api, shopper);
+        const id = await reserveOrder(api, shopper);
 
         await Promise.all([pay(id), pay(id)]);
 
@@ -2810,7 +2810,7 @@ describe("an order paid from two places at once", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, countingPayer());
 
-        const id = await reserved(api, shopper);
+        const id = await reserveOrder(api, shopper);
 
         await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper }),
@@ -2835,8 +2835,8 @@ describe("releasing holds that have run out", () =>
         const other = caller("other", undefined, "22222222-2222-4222-8222-222222222222");
 
         /* Both are old enough, and the sweep runs on schedule with nobody calling. */
-        await reserved(api, acme);
-        const otherOrder = await reserved(api, other);
+        await reserveOrder(api, acme);
+        const otherOrder = await reserveOrder(api, other);
 
         clock += 601_000;
 
@@ -2863,7 +2863,7 @@ describe("reserving a product", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, countingPayer());
 
-        const product = await listed(api, shopper);
+        const product = await listProduct(api, shopper);
 
         const [reserving] = await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: shopper }),
@@ -2893,12 +2893,12 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const id = await reserved(api, shopper);
+        const id = await reserveOrder(api, shopper);
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 
         /* The row itself: a shop is listing nothing of an expired hold. */
-        expect(await status(id)).toBe("expired");
+        expect(await statusOf(id)).toBe("expired");
     });
 
     test("and leaves nothing marked paid that nobody was charged for", async () =>
@@ -2910,7 +2910,7 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const id = await reserved(api, shopper);
+        const id = await reserveOrder(api, shopper);
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: shopper });
 
@@ -2927,7 +2927,7 @@ describe("what a shop is listing", () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
-        const id = await reserved(api, shopper);
+        const id = await reserveOrder(api, shopper);
 
         clock += 601_000;
 
@@ -2961,7 +2961,7 @@ describe("a slow refusal", () =>
             return { paid: true, reference: "r" };
         });
 
-        const id = await reserved(api, shopper);
+        const id = await reserveOrder(api, shopper);
         const paying = pay(id);
 
         await new Promise((keep) => setTimeout(keep, 5));
@@ -2975,7 +2975,7 @@ describe("a slow refusal", () =>
 
         await paying;
 
-        expect([second.status, await status(id), charges]).toEqual([201, "paid", 1]);
+        expect([second.status, await statusOf(id), charges]).toEqual([201, "paid", 1]);
     });
 });
 
@@ -3016,7 +3016,7 @@ export function caller(
 }
 
 /** A product this shop sells, listed and ready to be ordered. */
-export async function listed(api: TestApi, shopper = caller(), cents = 2500): Promise<string>
+export async function listProduct(api: TestApi, shopper = caller(), cents = 2500): Promise<string>
 {
     const created = await api.kernel.handle({
         method: "POST",
@@ -3038,12 +3038,12 @@ export async function listed(api: TestApi, shopper = caller(), cents = 2500): Pr
 }
 
 /** One of those, held for the caller. */
-export async function reserved(api: TestApi, shopper = caller()): Promise<string>
+export async function reserveOrder(api: TestApi, shopper = caller()): Promise<string>
 {
     const created = await api.kernel.handle({
         method: "POST",
         path: "/orders",
-        input: { productId: await listed(api, shopper) },
+        input: { productId: await listProduct(api, shopper) },
         caller: shopper,
     });
 
