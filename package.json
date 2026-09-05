@@ -19,7 +19,7 @@
     },
     "dependencies": {
         "@hono/node-server": "2.1.1",
-        "@onetype/stack-api-kit": "^1.0.0",
+        "@onetype/stack-api-kit": "file:/private/tmp/claude-501/-Users-dejan-Desktop-onetype-ai/fd7996e1-f96a-414d-8d93-9b59e5dd129e/scratchpad/onetype-stack-api-kit-2.0.0.tgz",
         "better-sqlite3": "13.0.3",
         "drizzle-orm": "0.45.2",
         "hono": "4.13.5",

@@ -10,17 +10,17 @@ export const Plugins = {
     discover: async (): Promise<Plugin[]> =>
     {
         const folders = await readdir(Plugins.at, { withFileTypes: true });
-        const found: Plugin[] = [];
+        const plugins: Plugin[] = [];
 
         for (const folder of folders)
         {
             if (folder.isDirectory())
             {
-                found.push(await Plugins.read(folder.name));
+                plugins.push(await Plugins.read(folder.name));
             }
         }
 
-        return found.sort((first, second) => first.name.localeCompare(second.name));
+        return plugins.sort((first, second) => first.name.localeCompare(second.name));
     },
 
     read: async (name: string): Promise<Plugin> =>

@@ -12,8 +12,8 @@ importers:
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.5)
       '@onetype/stack-api-kit':
-        specifier: ^1.0.0
-        version: 1.0.1(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)
+        specifier: file:/private/tmp/claude-501/-Users-dejan-Desktop-onetype-ai/fd7996e1-f96a-414d-8d93-9b59e5dd129e/scratchpad/onetype-stack-api-kit-2.0.0.tgz
+        version: file:../../../../../../private/tmp/claude-501/-Users-dejan-Desktop-onetype-ai/fd7996e1-f96a-414d-8d93-9b59e5dd129e/scratchpad/onetype-stack-api-kit-2.0.0.tgz(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
@@ -278,8 +278,9 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@onetype/stack-api-kit@1.0.1':
-    resolution: {integrity: sha512-ibyx8baGYNnBw9lJLOZh6tq5e10nj1SHtKTrPtcml/7QrKfnL/8P8knDQpArtIjF6jWFm2X34GEMwfMVduLiaQ==}
+  '@onetype/stack-api-kit@file:../../../../../../private/tmp/claude-501/-Users-dejan-Desktop-onetype-ai/fd7996e1-f96a-414d-8d93-9b59e5dd129e/scratchpad/onetype-stack-api-kit-2.0.0.tgz':
+    resolution: {integrity: sha512-jPvJx242G3UROuIs2GOO7BQEqX/MvqqHByWtB7sMGZWpC1XU8vd7weyycCeM0vHsaRW1rm0tCuMIFVQG328RPA==, tarball: file:../../../../../../private/tmp/claude-501/-Users-dejan-Desktop-onetype-ai/fd7996e1-f96a-414d-8d93-9b59e5dd129e/scratchpad/onetype-stack-api-kit-2.0.0.tgz}
+    version: 2.0.0
     engines: {node: '>=22'}
     peerDependencies:
       better-sqlite3: '>=13'
@@ -1266,7 +1267,7 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@onetype/stack-api-kit@1.0.1(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)':
+  '@onetype/stack-api-kit@file:../../../../../../private/tmp/claude-501/-Users-dejan-Desktop-onetype-ai/fd7996e1-f96a-414d-8d93-9b59e5dd129e/scratchpad/onetype-stack-api-kit-2.0.0.tgz(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)':
     dependencies:
       better-sqlite3: 13.0.3
       drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3)

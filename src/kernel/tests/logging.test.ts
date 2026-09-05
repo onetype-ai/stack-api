@@ -11,11 +11,11 @@ describe("a log line", () =>
 {
     test("keeps its own time, level and message whatever a caller passes", () =>
     {
-        const one = written({ at: "1999-01-01T00:00:00.000Z", level: "debug", line: "nothing to see here" });
+        const line = written({ at: "1999-01-01T00:00:00.000Z", level: "debug", line: "nothing to see here" });
 
-        expect(one.level).toBe("error");
-        expect(one.line).toBe("billing failed");
-        expect(one.at).not.toBe("1999-01-01T00:00:00.000Z");
+        expect(line.level).toBe("error");
+        expect(line.line).toBe("billing failed");
+        expect(line.at).not.toBe("1999-01-01T00:00:00.000Z");
     });
 
     test("and says why an error happened rather than {}", () =>

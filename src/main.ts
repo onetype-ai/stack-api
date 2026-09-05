@@ -4,7 +4,7 @@ import { Log } from "./kernel/logger";
 import { Plugins } from "./kernel/plugins";
 import { Settings } from "./kernel/settings";
 
-import type { Failure, Logger, Started } from "@onetype/stack-api-kit";
+import type { Failure, Logger, RunningApp } from "@onetype/stack-api-kit";
 
 type Server = ReturnType<typeof serve>;
 
@@ -72,7 +72,7 @@ class ApiRunner
         return { fresh: failures.slice(read), read: failures.length };
     }
 
-    watching(api: Started, log: Logger, every: number): NodeJS.Timeout
+    watching(api: RunningApp, log: Logger, every: number): NodeJS.Timeout
     {
         let read = 0;
 
@@ -105,7 +105,7 @@ class ApiRunner
         return beat;
     }
 
-    closing(server: Server, api: Started, log: Logger): void
+    closing(server: Server, api: RunningApp, log: Logger): void
     {
         let closing = false;
 
