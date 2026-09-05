@@ -28,7 +28,10 @@ export const Env = {
         return value;
     },
 
-    number: (name: string, fallback: number): number =>
+    // `least` is what the value means at its smallest. A port of 0 binds
+    // whatever is free and a body limit of 0 refuses every write, so a number
+    // that is legal to type is not always one that is legal to mean.
+    number: (name: string, fallback: number, least = 0, most = Number.MAX_SAFE_INTEGER): number =>
     {
         const value = Env.text(name);
 
@@ -40,9 +43,9 @@ export const Env = {
         // Number("  ") is 0, and a stray space in a .env would read as one.
         const parsed = value.trim() === "" ? Number.NaN : Number(value);
 
-        if (!Number.isInteger(parsed) || parsed < 0)
+        if (!Number.isInteger(parsed) || parsed < least || parsed > most)
         {
-            throw new Error(`${name} must be a non-negative whole number. Received "${value}".`);
+            throw new Error(`${name} must be a whole number from ${String(least)} to ${String(most)}. Received "${value}".`);
         }
 
         return parsed;

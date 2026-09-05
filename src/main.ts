@@ -41,8 +41,24 @@ class ApiRunner
             log,
         });
 
+        // Node kills the process on an unhandled rejection, and the default
+        // report is not a log line: the one message explaining the death would
+        // not reach a collector that reads them.
+        process.on("unhandledRejection", (cause: unknown) =>
+        {
+            log.error("a promise was rejected and nobody was listening", { cause });
+        });
+
+        process.on("uncaughtException", (cause: unknown) =>
+        {
+            log.error("something threw where nothing could catch it", { cause });
+            process.exit(1);
+        });
+
         const server = serve({ fetch: api.fetch, port: settings.port });
 
+        // Zero turns it off on purpose, which is why it is the one number here
+        // that may be zero.
         if (settings.watchSeconds > 0)
         {
             this.watching(api, log, settings.watchSeconds * 1000);

@@ -58,3 +58,32 @@ describe("a list read from the environment", () =>
         expect(Env.list("PROBE")).toEqual(["a", "b"]);
     });
 });
+
+describe("a number that is legal to type", () =>
+{
+    test("is refused when it is not legal to mean", () =>
+    {
+        process.env.PROBE = "0";
+
+        expect(() => Env.number("PROBE", 1, 1)).toThrow(/PROBE/);
+        expect(() => Env.number("PROBE", 1, 1, 65_535)).toThrow(/PROBE/);
+    });
+
+    test("and refused when it is past what it may be", () =>
+    {
+        process.env.PROBE = "70000";
+
+        expect(() => Env.number("PROBE", 1, 1, 65_535)).toThrow(/PROBE/);
+    });
+
+    test("but taken at either end of what it may be", () =>
+    {
+        process.env.PROBE = "1";
+
+        expect(Env.number("PROBE", 3000, 1, 65_535)).toBe(1);
+
+        process.env.PROBE = "65535";
+
+        expect(Env.number("PROBE", 3000, 1, 65_535)).toBe(65_535);
+    });
+});
