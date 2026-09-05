@@ -29,29 +29,38 @@ route that is not `public` answers 401. That is the API working, not a bug.
 
 ## Where to read
 
-- `#docs/usage.md`: how to add and use a plugin
-- `#docs/stack.md`: the exact structure and why
-- `#docs/architecture.md`: why plugins, why a declared boundary
-- `#docs/procedures/`: how each part is built
+`docs.md` is everything: how to add and use a plugin, the exact structure and
+why, why plugins at all, and a procedure for each part. It is one file so it
+can be read without walking a tree.
 
-Two worked examples, read once beside the procedures and deleted when the
-project no longer needs them:
+`src/plugins/example.txt` is the two worked examples, the same way:
 
-- `src/plugins/catalog` shows what one plugin does alone: scoped rows, text
-  that sorts and matches in any language, a cursor, a hook, a command.
-- `src/plugins/orders` depends on it, and shows what needs two, and what needs
-  time: a public API call, an event heard, a hook joined, a held connection,
-  and work asked for later.
+- `catalog` shows what one plugin does alone: scoped rows, text that sorts and
+  matches in any language, a cursor, a hook, a command.
+- `orders` depends on it, and shows what needs two, and what needs time: a
+  public API call, an event heard, a hook joined, a held connection, and work
+  asked for later.
 
-Both domains are deliberately dull: take the mechanics, never the model.
+Both domains are deliberately dull: take the mechanics, never the model. Read
+them once, then pack them away for good.
 
-`src/plugins/example.txt` holds them as one file, every path and every line, so
-they can be read without walking the tree. `pnpm unpack:plugins` rebuilds the
-folders from it; `pnpm pack:plugins` writes them back into it and removes the
-folders, so there is one copy rather than two that drift apart. Pack names
-other plugins to fold them away the same way: `pnpm pack:plugins billing`.
+`src/utils/example.txt` is the two shared utilities.
 
-`src/utils/` packs the same way, through `pnpm pack:utils`.
+## Packing
 
-`#docs/` packs the same way, into `docs.md`, through `pnpm pack:docs`. The
-checks that read the documents skip while they are packed, and say so.
+Each of those files is a folder folded into one, and folds back:
+
+```sh
+pnpm unpack:docs      # docs.md -> #docs/
+pnpm unpack:plugins   # example.txt -> the plugin folders
+pnpm unpack:utils
+```
+
+`pnpm pack:docs`, `pnpm pack:plugins` and `pnpm pack:utils` fold them back and
+remove what they read, so there is one copy rather than two that drift apart.
+Pack takes names, so any plugin folds away the same way:
+`pnpm pack:plugins billing`.
+
+The checks that read the documents skip while they are packed and say which
+command brings them back. Unpack before working on what is inside; pack when
+you are done.
