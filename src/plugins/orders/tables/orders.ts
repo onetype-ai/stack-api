@@ -9,7 +9,7 @@ export const orders = sqliteTable("orders_orders", {
 
     holdsUntil: integer("holds_until").notNull(),
 
-    // Which attempt is charging: status cannot say whose.
+    /* Which attempt is charging: status cannot say whose. */
     paying: text("paying"),
 
     createdAt: text("created_at").notNull(),

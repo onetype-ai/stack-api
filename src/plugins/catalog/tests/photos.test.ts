@@ -67,7 +67,7 @@ describe("a photo", () =>
         await catalog().photos.add(id, "https://pictures.example.test/one.jpg");
         await api.kernel.handle({ method: "DELETE", path: "/catalog/products/:id", input: { id }, caller: caller() });
 
-        // The dead id: a row left behind is inherited by whatever takes it next.
+        /* The dead id: a row left behind is inherited by whatever takes it next. */
         const inside = api.kernel.context("catalog", caller()) as unknown as Inside;
         const left = await inside.db.select().from(photos).where(eq(photos.productId, id));
 

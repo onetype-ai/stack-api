@@ -39,7 +39,7 @@ export class PhotosService
     {
         await this.#owned(productId);
 
-        // A service is reached without a route, so it says no itself.
+        /* A service is reached without a route, so it says no itself. */
         const checked = Photo.schema.shape.url.safeParse(url);
 
         if (!checked.success)
@@ -70,7 +70,6 @@ export class PhotosService
                 url: checked.data,
                 position: (highest?.at ?? -1) + 1,
 
-                // This table's stamp, not the product's.
                 ...this.#ctx.stamped("photos"),
             } as Row;
 

@@ -28,7 +28,7 @@ export const Env = {
         return value;
     },
 
-    // A port of 0 binds anything free; a body limit of 0 refuses every write.
+    /* A port of 0 binds anything free; a body limit of 0 refuses every write. */
     number: (name: string, fallback: number, least = 0, most = Number.MAX_SAFE_INTEGER): number =>
     {
         const value = Env.text(name);
@@ -38,7 +38,7 @@ export const Env = {
             return fallback;
         }
 
-        // Number("  ") is 0, and a stray space in a .env would read as one.
+        /* Number("  ") is 0, and a stray space in a .env would read as one. */
         const parsed = value.trim() === "" ? Number.NaN : Number(value);
 
         if (!Number.isInteger(parsed) || parsed < least || parsed > most)
@@ -49,7 +49,7 @@ export const Env = {
         return parsed;
     },
 
-    // Set and empty means nothing is allowed, which is the safe answer.
+    /* Set and empty means nothing is allowed, which is the safe answer. */
     list: (name: string): readonly string[] =>
     {
         return (process.env[name] ?? "")

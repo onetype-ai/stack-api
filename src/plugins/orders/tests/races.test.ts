@@ -93,7 +93,7 @@ describe("releasing holds that have run out", () =>
         const acme = caller("acme");
         const other = caller("other", undefined, "22222222-2222-4222-8222-222222222222");
 
-        // Both are old enough, and the sweep runs on schedule with nobody calling.
+        /* Both are old enough, and the sweep runs on schedule with nobody calling. */
         await reserved(api, acme);
         const theirs = await reserved(api, other);
 
@@ -156,7 +156,7 @@ describe("a card the bank refused", () =>
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
-        // The row itself: a shop is shown nothing of an expired hold.
+        /* The row itself: a shop is shown nothing of an expired hold. */
         expect(await status(id)).toBe("expired");
     });
 
@@ -225,7 +225,7 @@ describe("a slow refusal", () =>
 
         await new Promise((keep) => setTimeout(keep, 5));
 
-        // The first payer still waits, so put it back and let a second win it.
+        /* The first payer still waits, so put it back and let a second win it. */
         const inside = api.kernel.context("orders", who) as unknown as Inside;
 
         await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));

@@ -53,7 +53,7 @@ describe("what a watch says about listeners that failed", () =>
         expect(Api.unseen(failures, Api.unseen(failures, 0).read).fresh).toEqual([]);
     });
 
-    // A burst of failures shares a millisecond, so comparing them loses some.
+    /* A burst of failures shares a millisecond, so comparing them loses some. */
     test("including one that failed in the same millisecond as the last", () =>
     {
         const { read } = Api.unseen([broke(10)], 0);

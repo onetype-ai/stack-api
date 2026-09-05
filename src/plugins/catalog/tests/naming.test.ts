@@ -25,12 +25,12 @@ describe("two names that read the same", () =>
             method: "POST", path: "/catalog/products", input: { name, cents: 100 }, caller: caller(),
         });
 
-        // One letter pretending to be another, inside one word.
+        /* One letter pretending to be another, inside one word. */
         expect((await add("Widgеt")).status).toBe(400);
         expect((await add("Sοap")).status).toBe(400);
         expect((await add("ᎠPPLE")).status).toBe(400);
 
-        // What shops sell: a brand in one alphabet beside a word in another.
+        /* What shops sell: a brand in one alphabet beside a word in another. */
         expect((await add("iPhone 15 Про")).status).toBe(201);
         expect((await add("Nike Παπούτσια")).status).toBe(201);
         expect((await add("Рок")).status).toBe(201);

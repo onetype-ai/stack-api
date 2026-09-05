@@ -41,7 +41,7 @@ class ApiRunner
             log,
         });
 
-        // Node's own report is not a log line, so a collector would miss it.
+        /* Node's own report is not a log line, so a collector would miss it. */
         process.on("unhandledRejection", (cause: unknown) =>
         {
             log.error("a promise was rejected and nobody was listening", { cause });
@@ -55,7 +55,7 @@ class ApiRunner
 
         const server = serve({ fetch: api.fetch, port: settings.port });
 
-        // Zero turns it off on purpose.
+        /* Zero turns it off on purpose. */
         if (settings.watchSeconds > 0)
         {
             this.watching(api, log, settings.watchSeconds * 1000);
@@ -66,7 +66,7 @@ class ApiRunner
         this.closing(server, api, log);
     }
 
-    // Counted, not compared: stamps are milliseconds and a burst shares one.
+    /* Counted, not compared: stamps are milliseconds and a burst shares one. */
     unseen(failures: readonly Failure[], read: number): { fresh: readonly Failure[]; read: number }
     {
         return { fresh: failures.slice(read), read: failures.length };
@@ -80,7 +80,7 @@ class ApiRunner
         {
             const failures = api.kernel.events.failures();
 
-            // The ring is bounded, so a burst larger than it drops the oldest.
+            /* The ring is bounded, so a burst larger than it drops the oldest. */
             if (failures.length < read)
             {
                 read = 0;
@@ -111,7 +111,6 @@ class ApiRunner
 
         const close = (signal: string): void =>
         {
-            // Twice is one shutdown, not two teardowns at once.
             if (closing)
             {
                 return;
@@ -121,7 +120,7 @@ class ApiRunner
 
             log.info("stopping", { signal });
 
-            // Not awaited: one held connection would keep this from ever running.
+            /* Not awaited: one held connection would keep this from ever running. */
             server.close();
 
             const forced = setTimeout(() =>
@@ -135,7 +134,7 @@ class ApiRunner
             api.stop().then(
                 async () =>
                 {
-                    // A reply still on its way out would be reset mid-write.
+                    /* A reply still on its way out would be reset mid-write. */
                     await new Promise((settle) => setTimeout(settle, this.draining));
 
                     process.exit(0);
@@ -157,7 +156,7 @@ class ApiRunner
         }
     }
 
-    // JSON like every other line, so a collector keeps it.
+    /* JSON like every other line, so a collector keeps it. */
     failed(cause: unknown): void
     {
         process.stderr.write(Log.line("error", "the api did not start", { cause }));

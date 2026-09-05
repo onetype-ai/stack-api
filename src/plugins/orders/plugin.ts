@@ -45,7 +45,7 @@ export default definePlugin.over<Rows, Services>()("orders", {
     routes: [...orderRoutes],
 
     emits: {
-        // A listener has no caller to ask, so the shop travels in the payload.
+        /* A listener has no caller to ask, so the shop travels in the payload. */
         "orders.order.reserved": {
             describe: "A product was held. Emitted after the transaction commits.",
             schema: z.object({ id: z.uuid(), shopId: z.string(), productId: z.uuid() }),
@@ -106,11 +106,10 @@ export default definePlugin.over<Rows, Services>()("orders", {
         "orders.release-holds": defineCommand<Inside>()({
             describe: "Lets go of one shop's reservations whose moment has passed.",
 
-            // The payload is the boundary: a scheduled command has no caller to scope by.
+            /* The payload is the boundary: a scheduled command has no caller to scope by. */
             schema: z.object({ shopId: z.string().min(1) }),
             run: async (given, ctx) =>
             {
-                // forScope refuses a caller, and lets the scheduler through.
                 const mine = ctx.forScope(given.shopId);
                 const released = await mine.services.orders.releaseHolds();
 
@@ -124,7 +123,7 @@ export default definePlugin.over<Rows, Services>()("orders", {
 
     setup: (ctx) =>
     {
-        // Built once: a service is made per request and would count from zero.
+        /* Built once: a service is made per request and would count from zero. */
         ctx.owns(new Reserving());
 
         ctx.log.info("orders ready", { holdSeconds: ctx.config.holdSeconds });

@@ -45,7 +45,6 @@ export default definePlugin.over<Rows, Services>()("catalog", {
     routes: [...productRoutes],
 
     emits: {
-        // A listener runs for nobody, so the shop travels in the payload.
         "catalog.product.added": {
             describe: "A product was added. Emitted after the transaction commits.",
             schema: z.object({ id: z.uuid(), shopId: z.string(), cents: z.number().int().nonnegative() }),

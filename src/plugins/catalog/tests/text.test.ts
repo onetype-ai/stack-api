@@ -59,7 +59,7 @@ describe("ordering", () =>
         expect(await named("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
     });
 
-    // A tag naming its script gets that order; the stack picks none.
+    /* A tag naming its script gets that order; the stack picks none. */
     test("orders by the script the caller named", async () =>
     {
         api = await serving({ locale: "sr-Latn" });
@@ -122,7 +122,7 @@ describe("uniqueness", () =>
         expect(await add("Äpfel")).toBe(201);
     });
 
-    // A ligature folds, but the fold that joins "Model 2" and "Model ²" does not.
+    /* A ligature folds, but the fold that joins "Model 2" and "Model ²" does not. */
     test("refuses a name hidden behind characters that draw nothing", async () =>
     {
         api = await serving();

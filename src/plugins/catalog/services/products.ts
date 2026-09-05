@@ -61,7 +61,7 @@ export class ProductsService
     {
         const looking = Text.searched(text);
 
-        // Everything holds "", so a folded-away search would answer with the shop.
+        /* Everything holds "", so a folded-away search would answer with the shop. */
         if (looking === "")
         {
             return [];
@@ -93,7 +93,7 @@ export class ProductsService
 
         return this.#ctx.tx(async (inside) =>
         {
-            // Counted inside: the hook counts before it opens, so ten at once all pass.
+            /* Counted inside: the hook counts before it opens, so ten at once all pass. */
             const [counted] = await inside.db
                 .select({ many: count() })
                 .from(products)
@@ -123,7 +123,7 @@ export class ProductsService
                 createdAt: new Date(this.#ctx.now()).toISOString(),
                 sequence: (highest?.at ?? 0) + 1,
 
-                // From the caller, never the input: otherwise a row lands in another shop.
+                /* From the caller, never the input: otherwise a row lands in another shop. */
                 ...this.#ctx.stamped("products"),
             } as Row;
 
@@ -142,7 +142,7 @@ export class ProductsService
         });
     }
 
-    // Nothing returns from withdrawn; a shop lists it again as a new one.
+    /* Nothing returns from withdrawn; a shop lists it again as a new one. */
     static #next: Readonly<Record<Status, readonly Status[]>> = {
         draft: ["listed", "withdrawn"],
         listed: ["withdrawn"],
@@ -204,7 +204,7 @@ export class ProductsService
                 throw this.#missing();
             }
 
-            // With the product: left behind, they are inherited by the next id.
+            /* With the product: left behind, they are inherited by the next id. */
             await inside.db.delete(photos).where(eq(photos.productId, id));
 
             inside.events.emit("catalog.product.removed", { id, shopId: removed.shopId });

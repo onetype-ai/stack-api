@@ -6,7 +6,7 @@ import { Project } from "@onetype/stack-api-kit/testing";
 
 const LONGER = new Set(["#docs/reference.md"]);
 
-// Skipped while the documents are packed. `pnpm unpack:docs` runs them.
+/* Skipped while the documents are packed. `pnpm unpack:docs` runs them. */
 const unpacked = existsSync(join(process.cwd(), "#docs"));
 
 describe.skipIf(!unpacked)("the documents this project ships", () =>

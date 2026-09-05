@@ -28,7 +28,7 @@ export class OrdersService
         const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
         const now = this.#ctx.now();
 
-        // A hold past its moment reads as gone, swept or not.
+        /* A hold past its moment reads as gone, swept or not. */
         const [counted] = await this.#ctx.db
             .select({ total: count() })
             .from(orders)
@@ -67,7 +67,7 @@ export class OrdersService
 
         return this.#ctx.tx(async (inside) =>
         {
-            // Asked again inside: one withdrawn in the gap would be reserved anyway.
+            /* Asked again inside: one withdrawn in the gap would be reserved anyway. */
             const current = await Catalog.get(inside, productId);
 
             if (current.status !== "listed")
@@ -93,7 +93,7 @@ export class OrdersService
 
             await inside.db.insert(orders).values(row);
 
-            // Inside, so a rolled-back reservation schedules no release.
+            /* Inside, so a rolled-back reservation schedules no release. */
             inside.commands.later("orders.release-holds", { shopId: row.shopId }, this.#ctx.config.holdSeconds);
 
             this.#ctx.owned<Reserving>()?.took();
@@ -110,7 +110,6 @@ export class OrdersService
 
         const attempt = crypto.randomUUID();
 
-        // Claimed in one statement before the money moves.
         const [claimed] = await this.#ctx.write(() =>
             this.#ctx.db
                 .update(orders)
@@ -135,7 +134,7 @@ export class OrdersService
         }
         catch (cause)
         {
-            // Only this attempt: status cannot say which call set it.
+            /* Only this attempt: status cannot say which call set it. */
             await this.#ctx.write(() =>
                 this.#ctx.db
                     .update(orders)
@@ -232,7 +231,7 @@ export class OrdersService
             method: "POST",
             url: `${url}/v1/charges`,
 
-            // Ours and stable, so a retry asks about the charge they already hold.
+            /* Ours and stable, so a retry asks about the charge they already hold. */
             body: { cents, reference },
         });
 
