@@ -714,19 +714,19 @@ never broken proves nothing.
 
 # Reference
 
-## Refusal and Answered
+## Refusal and Reply
 
 ```ts
 throw new Refusal(400, "BAD_TITLE", "A title is 1 to 200 characters.", {
     title: "Between 1 and 200.",
 });
 
-return new Answered(201, item, { location: `/items/${item.id}` });
+return new Reply(201, item, { location: `/items/${item.id}` });
 ```
 
 `Refusal(status, code, message, fields?)`: only a `Refusal` speaks to a
 caller, any other error answers a fixed 500. `fields` maps an input name to
-what to do. An `Answered` sets status and headers; it still passes the output
+what to do. A `Reply` sets status and headers; it still passes the output
 schema and may not set what the kit owns, like `content-type`. `POST` is 201,
 else 200.
 
