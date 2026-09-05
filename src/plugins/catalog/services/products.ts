@@ -1,17 +1,20 @@
 import { Refusal } from "@onetype/stack-api-kit";
-import { and, eq, max } from "drizzle-orm";
+
+import { Status } from "../schemas/Status";
+import { and, count, eq, max } from "drizzle-orm";
 
 import { Ordering } from "@utils/Ordering";
 import { Paging } from "../utils/Paging";
 import { Product } from "../schemas/Product";
 import { Text } from "@utils/Text";
+import { photos } from "../tables/photos";
 import { products } from "../tables/products";
 
 import type { Inside } from "../types/Context";
 import type { Listing } from "../types/Listing";
 import type { ProductPage } from "../schemas/ProductPage";
 import type { SQL } from "drizzle-orm";
-import type { Status } from "../schemas/Status";
+
 
 type Row = typeof products.$inferSelect;
 
@@ -91,6 +94,23 @@ export class ProductsService
 
         return this.#ctx.tx(async (inside) =>
         {
+            // Counted again inside the transaction. The hook counts before it
+            // opens, so ten arriving at once all read the same number and all
+            // pass a limit only one of them should.
+            const [held] = await inside.db
+                .select({ many: count() })
+                .from(products)
+                .where(this.#scoped());
+
+            if ((held?.many ?? 0) >= this.#ctx.config.maxPerShop)
+            {
+                throw new Refusal(
+                    409,
+                    "TOO_MANY",
+                    `This shop already holds ${String(this.#ctx.config.maxPerShop)} products.`,
+                );
+            }
+
             const [highest] = await inside.db
                 .select({ at: max(products.sequence) })
                 .from(products)
@@ -126,12 +146,38 @@ export class ProductsService
         });
     }
 
+    // What a product may become next. Nothing returns from withdrawn: a shop
+    // that wants it back lists it again as a new one.
+    static #next: Readonly<Record<Status, readonly Status[]>> = {
+        draft: ["listed"],
+        listed: ["withdrawn"],
+        withdrawn: [],
+    };
+
     async setStatus(id: string, status: Status): Promise<Product>
     {
         const where = this.#just(id);
 
         return this.#ctx.tx(async (inside) =>
         {
+            const [held] = await inside.db.select().from(products).where(where);
+
+            if (held === undefined)
+            {
+                throw this.#missing();
+            }
+
+            const now = Status.schema.parse(held.status);
+
+            if (!ProductsService.#next[now].includes(status))
+            {
+                throw new Refusal(
+                    409,
+                    "WRONG_STATUS",
+                    `A product that is ${now} cannot become ${status}.`,
+                );
+            }
+
             const [row] = await inside.db.update(products).set({ status }).where(where).returning();
 
             if (row === undefined)
@@ -162,6 +208,10 @@ export class ProductsService
             {
                 throw this.#missing();
             }
+
+            // In the same transaction as the product. Left behind, they are
+            // reachable by a dead id, and inherited by the next row to use it.
+            await inside.db.delete(photos).where(eq(photos.productId, id));
 
             inside.events.emit("catalog.product.removed", { id, shopId: removed.shopId });
         });
