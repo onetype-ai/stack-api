@@ -4,10 +4,11 @@ Every file of these plugins, one after another. A line starting
 with "==> " opens a file and names its path; everything until the next
 such line is that file, byte for byte.
 
-Rebuild the folders with:  node tools/pack/plugins.mjs unpack
-Rewrite this file with:    node tools/pack/plugins.mjs pack catalog orders
+Rebuild it with:     node tools/pack/plugins.mjs unpack
+Rewrite this with:   node tools/pack/plugins.mjs pack catalog orders
 
 ==> src/plugins/catalog/plugin.ts
+
 import { defineCommand, defineParticipant, definePlugin } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
@@ -126,40 +127,9 @@ export default definePlugin.over<Rows, Services>()("catalog", {
         ctx.log.info("catalog stopped");
     },
 });
-==> src/plugins/catalog/index.ts
-import type { Context } from "@onetype/stack-api-kit";
 
-import type { Product } from "./schemas/Product";
-import type { ProductPage } from "./schemas/ProductPage";
-import type { Services } from "./types/Services";
-import type { Status } from "./schemas/Status";
-
-export const Catalog = {
-    services: (ctx: Context): Services =>
-    {
-        return ctx.use<Services>("catalog");
-    },
-
-    get: (ctx: Context, id: string): Promise<Product> =>
-    {
-        return Catalog.services(ctx).products.get(id);
-    },
-
-    list: (ctx: Context, locale: string): Promise<ProductPage> =>
-    {
-        return Catalog.services(ctx).products.list({ locale });
-    },
-
-    setStatus: (ctx: Context, id: string, status: Status): Promise<Product> =>
-    {
-        return Catalog.services(ctx).products.setStatus(id, status);
-    },
-};
-
-export type { Product as CatalogProduct } from "./schemas/Product";
-export type { ProductPage as CatalogProductPage } from "./schemas/ProductPage";
-export type { Status as CatalogStatus } from "./schemas/Status";
 ==> src/plugins/catalog/usage.md
+
 # catalog
 
 ## Description
@@ -202,7 +172,44 @@ Every read answers only the caller's shop.
 - Another shop's product: 404, the same answer as one that never existed.
 - A name over 120 characters, or empty once trimmed: 400.
 - A second product whose name differs only by case, width or ligature: 409.
+
+==> src/plugins/catalog/index.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Product } from "./schemas/Product";
+import type { ProductPage } from "./schemas/ProductPage";
+import type { Services } from "./types/Services";
+import type { Status } from "./schemas/Status";
+
+export const Catalog = {
+    services: (ctx: Context): Services =>
+    {
+        return ctx.use<Services>("catalog");
+    },
+
+    get: (ctx: Context, id: string): Promise<Product> =>
+    {
+        return Catalog.services(ctx).products.get(id);
+    },
+
+    list: (ctx: Context, locale: string): Promise<ProductPage> =>
+    {
+        return Catalog.services(ctx).products.list({ locale });
+    },
+
+    setStatus: (ctx: Context, id: string, status: Status): Promise<Product> =>
+    {
+        return Catalog.services(ctx).products.setStatus(id, status);
+    },
+};
+
+export type { Product as CatalogProduct } from "./schemas/Product";
+export type { ProductPage as CatalogProductPage } from "./schemas/ProductPage";
+export type { Status as CatalogStatus } from "./schemas/Status";
+
 ==> src/plugins/catalog/migrations/0001-create-products.sql
+
 CREATE TABLE catalog_products (
     id         TEXT PRIMARY KEY,
     shop_id    TEXT NOT NULL,
@@ -220,7 +227,9 @@ CREATE INDEX catalog_products_shop ON catalog_products (shop_id, sequence);
 -- Two products in one shop cannot share a name, whatever case or accent the
 -- input played with: the folded form is what collides.
 CREATE UNIQUE INDEX catalog_products_named ON catalog_products (shop_id, same);
+
 ==> src/plugins/catalog/migrations/0002-create-photos.sql
+
 CREATE TABLE catalog_photos (
     id         TEXT PRIMARY KEY,
     shop_id    TEXT NOT NULL,
@@ -230,7 +239,9 @@ CREATE TABLE catalog_photos (
 );
 
 CREATE INDEX catalog_photos_product ON catalog_photos (shop_id, product_id, position);
+
 ==> src/plugins/catalog/routes/products.ts
+
 import { Answered, defineRoute } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
@@ -340,7 +351,9 @@ export const productRoutes: readonly Endpoint<Inside>[] = [
         },
     }),
 ];
+
 ==> src/plugins/catalog/schemas/BeforeList.ts
+
 import { z } from "zod";
 
 export const BeforeList = {
@@ -352,7 +365,9 @@ export const BeforeList = {
 };
 
 export type BeforeList = z.infer<typeof BeforeList.schema>;
+
 ==> src/plugins/catalog/schemas/Config.ts
+
 import { z } from "zod";
 
 export const Config = {
@@ -365,7 +380,9 @@ export const Config = {
 };
 
 export type Config = z.infer<typeof Config.schema>;
+
 ==> src/plugins/catalog/schemas/Photo.ts
+
 import { z } from "zod";
 
 export const Photo = {
@@ -377,7 +394,9 @@ export const Photo = {
 };
 
 export type Photo = z.infer<typeof Photo.schema>;
+
 ==> src/plugins/catalog/schemas/Product.ts
+
 import { Refusal } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
@@ -420,7 +439,9 @@ export const Product = {
 };
 
 export type Product = z.infer<typeof Product.schema>;
+
 ==> src/plugins/catalog/schemas/ProductPage.ts
+
 import { z } from "zod";
 
 import { Product } from "./Product";
@@ -434,7 +455,9 @@ export const ProductPage = {
 };
 
 export type ProductPage = z.infer<typeof ProductPage.schema>;
+
 ==> src/plugins/catalog/schemas/Status.ts
+
 import { z } from "zod";
 
 export const Status = {
@@ -442,7 +465,9 @@ export const Status = {
 };
 
 export type Status = z.infer<typeof Status.schema>;
+
 ==> src/plugins/catalog/services/photos.ts
+
 import { and, eq, max } from "drizzle-orm";
 import { Refusal } from "@onetype/stack-api-kit";
 
@@ -538,7 +563,9 @@ export class PhotosService
         return { id: row.id, url: row.url, position: row.position };
     }
 }
+
 ==> src/plugins/catalog/services/products.ts
+
 import { Refusal } from "@onetype/stack-api-kit";
 import { and, eq, max } from "drizzle-orm";
 
@@ -735,7 +762,9 @@ export class ProductsService
         };
     }
 }
+
 ==> src/plugins/catalog/tables/photos.ts
+
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const photos = sqliteTable("catalog_photos", {
@@ -749,7 +778,9 @@ export const photos = sqliteTable("catalog_photos", {
 }, (table) => [
     index("catalog_photos_product").on(table.shopId, table.productId, table.position),
 ]);
+
 ==> src/plugins/catalog/tables/products.ts
+
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const products = sqliteTable("catalog_products", {
@@ -773,7 +804,9 @@ export const products = sqliteTable("catalog_products", {
     index("catalog_products_shop").on(table.shopId, table.sequence),
     uniqueIndex("catalog_products_named").on(table.shopId, table.same),
 ]);
+
 ==> src/plugins/catalog/tests/paging.test.ts
+
 import { describe, expect, test } from "vitest";
 
 import { Paging } from "../utils/Paging";
@@ -808,7 +841,9 @@ describe("a page of an ordered list", () =>
         expect(Paging.from([], 2)).toEqual({ page: [] });
     });
 });
+
 ==> src/plugins/catalog/tests/routes.test.ts
+
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { calling } from "@onetype/stack-api-kit/testing";
@@ -967,7 +1002,9 @@ describe("pages", () =>
         expect(seen).toEqual(["Alpha", "Bravo", "Charlie", "Delta", "Echo"]);
     });
 });
+
 ==> src/plugins/catalog/tests/scoping.test.ts
+
 import { afterEach, describe, expect, test } from "vitest";
 
 import { caller, nobody, serving, type Serving } from "./serving";
@@ -1056,7 +1093,9 @@ describe("what a shop may reach", () =>
         expect(answer.status).toBe(403);
     });
 });
+
 ==> src/plugins/catalog/tests/serving.ts
+
 import { booting, calling } from "@onetype/stack-api-kit/testing";
 
 import catalog from "../plugin";
@@ -1094,7 +1133,9 @@ export function rows(api: Serving): Rows
 {
     return api.kernel.context("catalog").db as Rows;
 }
+
 ==> src/plugins/catalog/tests/text.test.ts
+
 import { afterEach, describe, expect, test } from "vitest";
 
 import { caller, serving, type Serving } from "./serving";
@@ -1225,7 +1266,9 @@ describe("length", () =>
         expect(await add("あ".repeat(121))).toBe(400);
     });
 });
+
 ==> src/plugins/catalog/types/Context.ts
+
 import type { Context } from "@onetype/stack-api-kit";
 
 import type { Config } from "../schemas/Config";
@@ -1233,7 +1276,9 @@ import type { Rows } from "./Rows";
 import type { Services } from "./Services";
 
 export type Inside = Context<Config, Services, Rows>;
+
 ==> src/plugins/catalog/types/Listing.ts
+
 import type { Status } from "../schemas/Status";
 
 export type Listing = {
@@ -1241,14 +1286,18 @@ export type Listing = {
     status?: Status;
     after?: string;
 };
+
 ==> src/plugins/catalog/types/Rows.ts
+
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type { photos } from "../tables/photos";
 import type { products } from "../tables/products";
 
 export type Rows = BetterSQLite3Database<{ products: typeof products; photos: typeof photos }>;
+
 ==> src/plugins/catalog/types/Services.ts
+
 import type { PhotosService } from "../services/photos";
 import type { ProductsService } from "../services/products";
 
@@ -1256,7 +1305,9 @@ export type Services = {
     products: ProductsService;
     photos: PhotosService;
 };
+
 ==> src/plugins/catalog/utils/Paging.ts
+
 class PagingUtil
 {
     from<Row extends { id: string }>(sorted: readonly Row[], size: number, after?: string):
@@ -1274,7 +1325,9 @@ class PagingUtil
 }
 
 export const Paging = new PagingUtil();
+
 ==> src/plugins/orders/plugin.ts
+
 import { defineCommand, defineListener, defineParticipant, definePlugin } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
@@ -1413,33 +1466,9 @@ export default definePlugin.over<Rows, Services>()("orders", {
         ctx.log.info("orders stopped", { reserved: held?.count() ?? 0 });
     },
 });
-==> src/plugins/orders/index.ts
-import type { Context } from "@onetype/stack-api-kit";
 
-import type { Order } from "./schemas/Order";
-import type { OrderPage } from "./schemas/OrderPage";
-import type { Services } from "./types/Services";
-
-export const Orders = {
-    services: (ctx: Context): Services =>
-    {
-        return ctx.use<Services>("orders");
-    },
-
-    list: (ctx: Context): Promise<OrderPage> =>
-    {
-        return Orders.services(ctx).orders.list();
-    },
-
-    reserve: (ctx: Context, productId: string): Promise<Order> =>
-    {
-        return Orders.services(ctx).orders.reserve(productId);
-    },
-};
-
-export type { Order as ShopOrder } from "./schemas/Order";
-export type { OrderPage as ShopOrderPage } from "./schemas/OrderPage";
 ==> src/plugins/orders/usage.md
+
 # orders
 
 ## Description
@@ -1485,7 +1514,37 @@ answers only the caller's shop.
 - A product not listed: 409. A hold already gone: 409.
 - A payment the partner refused: 402, and the order stays held.
 - An answer from them we cannot read: 502.
+
+==> src/plugins/orders/index.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Order } from "./schemas/Order";
+import type { OrderPage } from "./schemas/OrderPage";
+import type { Services } from "./types/Services";
+
+export const Orders = {
+    services: (ctx: Context): Services =>
+    {
+        return ctx.use<Services>("orders");
+    },
+
+    list: (ctx: Context): Promise<OrderPage> =>
+    {
+        return Orders.services(ctx).orders.list();
+    },
+
+    reserve: (ctx: Context, productId: string): Promise<Order> =>
+    {
+        return Orders.services(ctx).orders.reserve(productId);
+    },
+};
+
+export type { Order as ShopOrder } from "./schemas/Order";
+export type { OrderPage as ShopOrderPage } from "./schemas/OrderPage";
+
 ==> src/plugins/orders/migrations/0001-create-orders.sql
+
 CREATE TABLE orders_orders (
     id          TEXT PRIMARY KEY,
     shop_id     TEXT NOT NULL,
@@ -1498,7 +1557,9 @@ CREATE TABLE orders_orders (
 );
 
 CREATE INDEX orders_orders_shop ON orders_orders (shop_id, sequence);
+
 ==> src/plugins/orders/routes/orders.ts
+
 import { Answered, defineRoute } from "@onetype/stack-api-kit";
 import { z } from "zod";
 
@@ -1568,7 +1629,9 @@ export const orderRoutes: readonly Endpoint<Inside>[] = [
         },
     }),
 ];
+
 ==> src/plugins/orders/schemas/Charge.ts
+
 import { z } from "zod";
 
 export const Charge = {
@@ -1579,7 +1642,9 @@ export const Charge = {
 };
 
 export type Charge = z.infer<typeof Charge.schema>;
+
 ==> src/plugins/orders/schemas/Config.ts
+
 import { z } from "zod";
 
 export const Config = {
@@ -1592,7 +1657,9 @@ export const Config = {
 };
 
 export type Config = z.infer<typeof Config.schema>;
+
 ==> src/plugins/orders/schemas/Order.ts
+
 import { z } from "zod";
 
 import { Status } from "./Status";
@@ -1608,7 +1675,9 @@ export const Order = {
 };
 
 export type Order = z.infer<typeof Order.schema>;
+
 ==> src/plugins/orders/schemas/OrderPage.ts
+
 import { z } from "zod";
 
 import { Order } from "./Order";
@@ -1621,7 +1690,9 @@ export const OrderPage = {
 };
 
 export type OrderPage = z.infer<typeof OrderPage.schema>;
+
 ==> src/plugins/orders/schemas/Status.ts
+
 import { z } from "zod";
 
 export const Status = {
@@ -1629,7 +1700,9 @@ export const Status = {
 };
 
 export type Status = z.infer<typeof Status.schema>;
+
 ==> src/plugins/orders/services/orders.ts
+
 import { and, count, eq, lte, max } from "drizzle-orm";
 import { Catalog } from "@plugins/catalog";
 import { Refusal } from "@onetype/stack-api-kit";
@@ -1879,7 +1952,9 @@ export class OrdersService
         };
     }
 }
+
 ==> src/plugins/orders/services/Reserving.ts
+
 export class Reserving
 {
     #taken = 0;
@@ -1894,7 +1969,9 @@ export class Reserving
         return this.#taken;
     }
 }
+
 ==> src/plugins/orders/tables/orders.ts
+
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const orders = sqliteTable("orders_orders", {
@@ -1911,7 +1988,9 @@ export const orders = sqliteTable("orders_orders", {
 }, (table) => [
     index("orders_orders_shop").on(table.shopId, table.sequence),
 ]);
+
 ==> src/plugins/orders/tests/crossings.test.ts
+
 import { afterEach, describe, expect, test } from "vitest";
 
 import { caller, serving, type Serving } from "./serving";
@@ -2128,7 +2207,9 @@ describe("what the partner says is input", () =>
         expect(api.called()).toEqual([]);
     });
 });
+
 ==> src/plugins/orders/tests/holding.test.ts
+
 import { afterEach, describe, expect, test } from "vitest";
 
 import { caller, serving, type Serving } from "./serving";
@@ -2230,7 +2311,9 @@ describe("a hold", () =>
         expect(answer.status).toBe(409);
     });
 });
+
 ==> src/plugins/orders/tests/serving.ts
+
 import { booting, calling } from "@onetype/stack-api-kit/testing";
 import catalog from "@plugins/catalog/plugin";
 
@@ -2264,7 +2347,9 @@ export function caller(
 {
     return calling(permissions, id, { shopId });
 }
+
 ==> src/plugins/orders/types/Context.ts
+
 import type { Context } from "@onetype/stack-api-kit";
 
 import type { Config } from "../schemas/Config";
@@ -2272,13 +2357,17 @@ import type { Rows } from "./Rows";
 import type { Services } from "./Services";
 
 export type Inside = Context<Config, Services, Rows>;
+
 ==> src/plugins/orders/types/Rows.ts
+
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type { orders } from "../tables/orders";
 
 export type Rows = BetterSQLite3Database<{ orders: typeof orders }>;
+
 ==> src/plugins/orders/types/Services.ts
+
 import type { OrdersService } from "../services/orders";
 
 export type Services = {

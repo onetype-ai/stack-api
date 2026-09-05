@@ -7,4 +7,4 @@
 
 import { Packer } from "./index.mjs";
 
-new Packer({ at: "src/plugins", demo: ["catalog", "orders"], name: "plugin" }).ran(process.argv.slice(2));
+new Packer({ at: "src/plugins", demo: ["catalog", "orders"], name: "plugin", tool: "plugins" }).ran(process.argv.slice(2));

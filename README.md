@@ -52,3 +52,6 @@ folders, so there is one copy rather than two that drift apart. Pack names
 other plugins to fold them away the same way: `pnpm pack:plugins billing`.
 
 `src/utils/` packs the same way, through `pnpm pack:utils`.
+
+`#docs/` packs the same way, into `docs.md`, through `pnpm pack:docs`. The
+checks that read the documents skip while they are packed, and say so.

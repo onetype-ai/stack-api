@@ -17,12 +17,14 @@ export class Packer
 {
     mark = "==> ";
 
-    constructor({ at, demo, name })
+    constructor({ at, demo, name, into, tool })
     {
+        this.tool = tool;
         this.root = process.cwd();
         this.folder = join(this.root, ...at.split("/"));
-        this.file = join(this.folder, "example.txt");
-        this.demo = demo;
+        this.file = into === undefined ? join(this.folder, "example.txt") : join(this.root, into);
+        this.whole = into !== undefined;
+        this.demo = demo ?? [];
         this.name = name;
         this.at = at;
     }
@@ -39,10 +41,12 @@ export class Packer
             }
         }
 
-        const files = names.flatMap((name) => this.walk(this.held(name)).sort((one, two) =>
-        {
-            return this.weigh(one) - this.weigh(two) || one.localeCompare(two);
-        }));
+        const files = this.whole
+            ? this.walk(this.folder).sort((one, two) => this.weigh(one) - this.weigh(two) || one.localeCompare(two))
+            : names.flatMap((name) => this.walk(this.held(name)).sort((one, two) =>
+            {
+                return this.weigh(one) - this.weigh(two) || one.localeCompare(two);
+            }));
 
         if (files.length === 0)
         {
@@ -61,18 +65,27 @@ export class Packer
                 throw new Error(`${path} holds a line starting with "${this.mark}", which would unpack wrongly.`);
             }
 
-            out += `${this.mark}${path}\n${body}${body.endsWith("\n") ? "" : "\n"}`;
+            out += `\n${this.mark}${path}\n\n${body}${body.endsWith("\n") ? "" : "\n"}`;
         }
 
-        mkdirSync(this.folder, { recursive: true });
+        mkdirSync(dirname(this.file), { recursive: true });
         writeFileSync(this.file, out);
 
-        for (const name of names)
+        if (this.whole)
         {
-            rmSync(this.held(name), { recursive: true, force: true });
+            rmSync(this.folder, { recursive: true, force: true });
+        }
+        else
+        {
+            for (const name of names)
+            {
+                rmSync(this.held(name), { recursive: true, force: true });
+            }
         }
 
-        console.log(`packed ${names.join(", ")} (${files.length} files) into ${relative(this.root, this.file)}`);
+        const said = this.whole ? this.at : names.join(", ");
+
+        console.log(`packed ${said} (${files.length} files) into ${relative(this.root, this.file)}`);
     }
 
     unpack()
@@ -100,9 +113,16 @@ export class Packer
         const depth = this.at.split("/").length;
         const names = [...new Set(files.map(([named]) => (named.split("/")[depth] ?? "").replace(/\.tsx?$/, "")))];
 
-        for (const name of names)
+        if (this.whole)
         {
-            rmSync(join(this.folder, name), { recursive: true, force: true });
+            rmSync(this.folder, { recursive: true, force: true });
+        }
+        else
+        {
+            for (const name of names)
+            {
+                rmSync(join(this.folder, name), { recursive: true, force: true });
+            }
         }
 
         for (const [named, body] of files)
@@ -113,7 +133,9 @@ export class Packer
             writeFileSync(full, body.endsWith("\n") ? body : `${body}\n`);
         }
 
-        console.log(`unpacked ${names.join(", ")} (${files.length} files) into ${relative(this.root, this.folder)}`);
+        const told = this.whole ? this.at : names.join(", ");
+
+        console.log(`unpacked ${told} (${files.length} files) into ${relative(this.root, this.folder)}`);
     }
 
     read(packed)
@@ -139,6 +161,11 @@ export class Packer
 
             if (path !== null)
             {
+                if (body.length === 0 && line === "")
+                {
+                    continue;
+                }
+
                 body.push(line);
             }
         }
@@ -190,25 +217,27 @@ export class Packer
     {
         const name = path.split(sep).pop() ?? "";
 
-        if (name === "plugin.ts")
+        if (name === "plugin.ts" || name === "usage.md")
         {
             return 0;
         }
 
-        return name === "usage.md" || name === "index.ts" ? 1 : 2;
+        return name === "index.ts" || name === "architecture.md" ? 1 : 2;
     }
 
     head(names)
     {
-        return `# ${names.join(", ")} packed
+        const said = this.whole ? this.at : names.join(", ");
+        const many = this.whole || names.length > 1;
 
-Every file of ${names.length === 1 ? `this ${this.name}` : `these ${this.name}s`}, one after another. A line starting
+        return `# ${said} packed
+
+Every file of ${many ? `these ${this.name}s` : `this ${this.name}`}, one after another. A line starting
 with "${this.mark}" opens a file and names its path; everything until the next
 such line is that file, byte for byte.
 
-Rebuild the folders with:  node tools/pack/${this.name}s.mjs unpack
-Rewrite this file with:    node tools/pack/${this.name}s.mjs pack ${names.join(" ")}
-
+Rebuild it with:     node tools/pack/${this.tool}.mjs unpack
+Rewrite this with:   node tools/pack/${this.tool}.mjs pack${this.whole ? "" : ` ${names.join(" ")}`}
 `;
     }
 
@@ -241,7 +270,7 @@ Rewrite this file with:    node tools/pack/${this.name}s.mjs pack ${names.join("
             return;
         }
 
-        console.error(`Usage: node tools/pack/${this.name}s.mjs pack [name...] | unpack`);
+        console.error(`Usage: node tools/pack/${this.tool}.mjs pack [name...] | unpack`);
         process.exit(1);
     }
 }
