@@ -278,6 +278,57 @@ no timezone: for an hour each day you work out the seconds yourself.
 
 A hold past its moment is one your reads ignore; the command only tidies up.
 
+==> #docs/procedures/naming.md
+
+# Procedure: naming
+
+A name is a part of speech, not a suffix. A type or a variable is a noun or an
+adjective; a function is a verb.
+
+## The test
+
+Put **the** in front and see if you get a thing. Put **is** in front and see if
+you get a state. If neither works, and the word only fits after **currently**,
+it is a verb doing a noun's job.
+
+```
+the encoding, the mapping, the settings      a thing
+is pending, is expired, is reserved          a state
+currently looking, currently booting         a verb: rename it
+```
+
+So `encoding`, `mapping`, `pending` and `expired` are good names and `looking`,
+`booting` and `holding` are not, though they look alike. `-ing` is not the
+problem: `looking` is.
+
+## When a name will not come
+
+A name that will not come is usually missing a word from the domain, not a
+synonym. `looking` holds a `query`. `holding` returns the `matches`.
+
+If no word fits, the thing does more than one job. That is a design finding,
+not a naming one.
+
+## Functions
+
+Imperative: `reserve`, `withdraw`, `findExpired`. A reader takes the name of
+what it returns, without `get`: `failures()`, not `getFailures()`. A predicate
+reads as a question: `isPaid()`.
+
+## Length
+
+As long as the distance it travels. `id` inside three lines is clear; the same
+name across a file is not. A name is too short when the reader has to look up
+to know what it holds, and too long when it repeats the type.
+
+## Refuses
+
+- `Manager`, `Handler`, `Helper`, `Util`, `Service`, `Data`, `Info`: they say
+  something happens, never what.
+- `data`, `tmp`, `obj`, `val`, `item`, `res`.
+- A negative boolean: `isNotValid` makes `!isNotValid` at the call site.
+- `I` on an interface, `Type` on a type, `get` on a reader.
+
 ==> #docs/procedures/plugin/connections.md
 
 # Procedure: connections
