@@ -41,26 +41,9 @@ can be read without walking a tree.
   public API call, an event heard, a hook joined, a held connection, and work
   asked for later.
 
-Both domains are deliberately dull: take the mechanics, never the model. Read
-them once, then pack them away for good.
+Both domains are deliberately dull: take the mechanics, never the model.
 
-`src/utils/example.txt` is the two shared utilities.
+`src/utils/example.txt` is the two shared utilities, written the same way.
 
-## Packing
-
-Each of those files is a folder folded into one, and folds back:
-
-```sh
-pnpm unpack:docs      # docs.md -> #docs/
-pnpm unpack:plugins   # example.txt -> the plugin folders
-pnpm unpack:utils
-```
-
-`pnpm pack:docs`, `pnpm pack:plugins` and `pnpm pack:utils` fold them back and
-remove what they read, so there is one copy rather than two that drift apart.
-Pack takes names, so any plugin folds away the same way:
-`pnpm pack:plugins billing`.
-
-The checks that read the documents skip while they are packed and say which
-command brings them back. Unpack before working on what is inside; pack when
-you are done.
+Each of those files is a folder folded into one: every path and every line, in
+the order somebody would read them. Read them where they are.

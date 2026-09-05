@@ -9,13 +9,7 @@
         "test:watch": "vitest",
         "typecheck": "tsc --noEmit",
         "lint": "eslint src",
-        "verify": "pnpm lint && pnpm typecheck && pnpm test",
-        "pack:plugins": "node tools/pack/plugins.mjs pack",
-        "unpack:plugins": "node tools/pack/plugins.mjs unpack",
-        "pack:utils": "node tools/pack/utils.mjs pack",
-        "unpack:utils": "node tools/pack/utils.mjs unpack",
-        "pack:docs": "node tools/pack/docs.mjs pack",
-        "unpack:docs": "node tools/pack/docs.mjs unpack"
+        "verify": "pnpm lint && pnpm typecheck && pnpm test"
     },
     "dependencies": {
         "@hono/node-server": "2.1.1",
