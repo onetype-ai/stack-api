@@ -150,7 +150,7 @@ nothing else may. Signatures are in `reference.md`.
 ## What is running
 
 ```ts
-type Registered = {
+type Registration = {
     plugin: string; method: Method; path: string; describe: string;
     requires: readonly string[]; public: boolean;
     limit: { requests: number; seconds: number } | undefined;
@@ -211,7 +211,7 @@ whose work it was travels in the payload.
 ## Delivery
 
 Without an outbox an event lives only in memory: the process stops and the
-listener is never called. `outbox: true` in `start` or `booting` writes each
+listener is never called. `outbox: true` in `start` or `startTestKernel` writes each
 event in the transaction that emitted it, delivers after the commit, forgets
 only once a listener has heard it, and redelivers what was interrupted at the
 next startup. Delivery is at least once: a writing listener ends with
@@ -221,7 +221,7 @@ next startup. Delivery is at least once: a writing listener ends with
 
 A listener needs no `dependsOn`: an emitter does not know who listens, which
 lets two plugins react to each other. But an event nobody declares does not
-exist, so a test boots the emitter too: `booting({ plugins: [orders, ledger] })`. The boundary checker builds its graph from imports, tests included, so
+exist, so a test boots the emitter too. The boundary checker builds its graph from imports, tests included, so
 that boot can be reported as a cycle though it is one on paper.
 
 Your `listens` schema names the type you are handed, it does not check it. The
@@ -531,9 +531,9 @@ A service is a class: `ctx` in the constructor, `#private` for what only it
 calls. A util is a class too, holding no `ctx` and exported already built:
 
 ```ts
-class TextUtil { same(raw: string): string { … } }
+class Folding { searched(raw: string): string { … } }
 
-export const Text = new TextUtil();
+export const Text = new Folding();
 ```
 
 Everything else is an object with methods. Imports: values, then types,
@@ -682,7 +682,7 @@ else 200.
 ## Imports
 
 ```ts
-import { Answered, definePlugin, defineRoute, Refusal, same } from "@onetype/stack-api-kit";
+import { definePlugin, defineRoute, Refusal } from "@onetype/stack-api-kit";
 ```
 
 `defineListener`, `defineParticipant` and `defineCommand` are the same shape:
@@ -691,15 +691,15 @@ called once for the context, then the schema and the handler.
 Two entry points, and nothing is in both. `@onetype/stack-api-kit` holds
 everything a plugin or `main.ts` uses at runtime, faults included:
 `KernelFault`, `OutboundFault`, `Kernel`, `Caller`, `Endpoint`. Its `/testing`
-holds what only a test uses: `booting`, `calling`, `Project`, `boundaries`.
+holds what only a test uses: `startTestKernel`, `createCaller`, `Project`.
 
-`same(left, right)` compares two strings in constant time.
+`equalsInConstantTime(left, right)` compares secrets in constant time.
 
 ## Context
 
 `name`, `config`, `services`, `log`, `caller`, `headers`, `db`, `tx`, `write`,
 `fetch`, `events.emit`, `hooks.run`, `permissions.has` / `.all` / `.claims`,
-`commands.run` / `.later`, `scoped` / `stamped` / `forScope`, `owns` / `owned`,
+`commands.run` / `.later`, `scoped` / `stamped` / `forScope`, `owns`,
 `use`, `now`. `caller` is undefined outside a request: in `setup`, and in a
 listener.
 
@@ -719,13 +719,13 @@ closed route is 401.
 ## Testing
 
 ```ts
-const api = await booting({
+const api = await startTestKernel({
     plugins: [mine], config: { mine: { pageSize: 10 } },
     answers: () => { throw new OutboundFault("STATUS", "Refused.", 503); },
     outbox: true, schedule: true, now: () => clock,
 });
 
-const who = calling(["items.read"], ownerId, { tenantId: "acme" });
+const who = createCaller(["items.read"], ownerId, { tenantId: "acme" });
 
 await api.kernel.handle({
     method: "GET", path: "/items/:id", input: { id }, caller: who,

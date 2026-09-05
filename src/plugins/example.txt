@@ -20,7 +20,7 @@ import { productRoutes } from "./routes/products";
 import { photos } from "./tables/photos";
 import { products } from "./tables/products";
 
-import type { Inside } from "./types/Context";
+import type { CatalogContext } from "./types/Context";
 import type { Rows } from "./types/Rows";
 import type { Services } from "./types/Services";
 
@@ -82,11 +82,11 @@ export default definePlugin.over<Rows, Services>()("catalog", {
     },
 
     participates: {
-        "catalog.product.before-list": defineParticipant<Inside>()(BeforeList.schema, {
+        "catalog.product.before-list": defineParticipant<CatalogContext>()(BeforeList.schema, {
             describe: "Refuses a shop that already holds as many products as its config allows.",
             handle: async (_asked, ctx) =>
             {
-                const many = await ctx.services.products.countMine();
+                const many = await ctx.services.products.countForThisShop();
 
                 return many >= ctx.config.maxPerShop
                     ? `This shop already holds ${String(many)} products, which is the most it may have.`
@@ -96,7 +96,7 @@ export default definePlugin.over<Rows, Services>()("catalog", {
     },
 
     commands: {
-        "catalog.withdraw-drafts": defineCommand<Inside>()({
+        "catalog.withdraw-drafts": defineCommand<CatalogContext>()({
             describe: "Withdraws every product this shop left in draft.",
             requires: ["catalog.write"],
 
@@ -248,11 +248,11 @@ import { ProductPage } from "../schemas/ProductPage";
 import { Status } from "../schemas/Status";
 
 import type { Endpoint } from "@onetype/stack-api-kit";
-import type { Inside } from "../types/Context";
+import type { CatalogContext } from "../types/Context";
 
-const route = defineRoute<Inside>();
+const route = defineRoute<CatalogContext>();
 
-export const productRoutes: readonly Endpoint<Inside>[] = [
+export const productRoutes: readonly Endpoint<CatalogContext>[] = [
     route({
         method: "GET",
         path: "/catalog/products",
@@ -498,7 +498,7 @@ import { Photo } from "../schemas/Photo";
 import { photos } from "../tables/photos";
 import { products } from "../tables/products";
 
-import type { Inside } from "../types/Context";
+import type { CatalogContext } from "../types/Context";
 
 import type { SQL } from "drizzle-orm";
 
@@ -508,29 +508,29 @@ export class PhotosService
 {
     static #most = 50;
 
-    readonly #ctx: Inside;
+    readonly #ctx: CatalogContext;
 
-    constructor(ctx: Inside)
+    constructor(ctx: CatalogContext)
     {
         this.#ctx = ctx;
     }
 
     async of(productId: string): Promise<Photo[]>
     {
-        await this.#owned(productId);
+        await this.#whereCaller(productId);
 
-        const found = await this.#ctx.db
+        const rows = await this.#ctx.db
             .select()
             .from(photos)
-            .where(and(eq(photos.productId, productId), this.#scoped()))
+            .where(and(eq(photos.productId, productId), this.#whereShop()))
             .orderBy(photos.position);
 
-        return found.map((row) => this.#shown(row));
+        return rows.map((row) => this.#toPhoto(row));
     }
 
     async add(productId: string, url: string): Promise<Photo>
     {
-        await this.#owned(productId);
+        await this.#whereCaller(productId);
 
         /* A service is reached without a route, so it says no itself. */
         const checked = Photo.schema.shape.url.safeParse(url);
@@ -545,7 +545,7 @@ export class PhotosService
             const [counted] = await inside.db
                 .select({ many: count() })
                 .from(photos)
-                .where(and(eq(photos.productId, productId), this.#scoped()));
+                .where(and(eq(photos.productId, productId), this.#whereShop()));
 
             if ((counted?.many ?? 0) >= PhotosService.#most)
             {
@@ -555,7 +555,7 @@ export class PhotosService
             const [highest] = await inside.db
                 .select({ at: max(photos.position) })
                 .from(photos)
-                .where(and(eq(photos.productId, productId), this.#scoped()));
+                .where(and(eq(photos.productId, productId), this.#whereShop()));
 
             const row = {
                 id: crypto.randomUUID(),
@@ -568,7 +568,7 @@ export class PhotosService
 
             await inside.db.insert(photos).values(row);
 
-            return this.#shown(row);
+            return this.#toPhoto(row);
         });
     }
 
@@ -576,31 +576,31 @@ export class PhotosService
     {
         const removed = await this.#ctx.db
             .delete(photos)
-            .where(and(eq(photos.productId, productId), this.#scoped()))
+            .where(and(eq(photos.productId, productId), this.#whereShop()))
             .returning({ id: photos.id });
 
         return removed.length;
     }
 
-    async #owned(productId: string): Promise<void>
+    async #whereCaller(productId: string): Promise<void>
     {
-        const [found] = await this.#ctx.db
+        const [rows] = await this.#ctx.db
             .select({ id: products.id })
             .from(products)
             .where(and(eq(products.id, productId), this.#ctx.scoped<SQL>("products")));
 
-        if (found === undefined)
+        if (rows === undefined)
         {
             throw new Refusal(404, "NOT_FOUND", "No such product.");
         }
     }
 
-    #scoped(): SQL | undefined
+    #whereShop(): SQL | undefined
     {
         return this.#ctx.scoped<SQL>("photos");
     }
 
-    #shown(row: Row): Photo
+    #toPhoto(row: Row): Photo
     {
         return { id: row.id, url: row.url, position: row.position };
     }
@@ -620,7 +620,7 @@ import { Text } from "@utils/Text";
 import { photos } from "../tables/photos";
 import { products } from "../tables/products";
 
-import type { Inside } from "../types/Context";
+import type { CatalogContext } from "../types/Context";
 import type { Listing } from "../types/Listing";
 import type { ProductPage } from "../schemas/ProductPage";
 import type { SQL } from "drizzle-orm";
@@ -630,41 +630,41 @@ type Row = typeof products.$inferSelect;
 
 export class ProductsService
 {
-    readonly #ctx: Inside;
+    readonly #ctx: CatalogContext;
 
-    constructor(ctx: Inside)
+    constructor(ctx: CatalogContext)
     {
         this.#ctx = ctx;
     }
 
     async list(query: Listing): Promise<ProductPage>
     {
-        const found = await this.#ctx.db
+        const rows = await this.#ctx.db
             .select()
             .from(products)
-            .where(this.#scoped(query.status));
+            .where(this.#whereShop(query.status));
 
         const collator = Ordering.by(query.locale);
-        const sorted = [...found].sort((first, second) => collator.compare(first.name, second.name));
+        const sorted = [...rows].sort((first, second) => collator.compare(first.name, second.name));
 
         const { page, after } = Paging.from(sorted, this.#ctx.config.pageSize, query.after);
 
         return {
-            products: page.map((row) => this.#shown(row)),
+            products: page.map((row) => this.#toProduct(row)),
             ...(after !== undefined && { after }),
         };
     }
 
     async get(id: string): Promise<Product>
     {
-        const [row] = await this.#ctx.db.select().from(products).where(this.#just(id));
+        const [row] = await this.#ctx.db.select().from(products).where(this.#whereId(id));
 
         if (row === undefined)
         {
-            throw this.#missing();
+            throw this.#notFoundError();
         }
 
-        return this.#shown(row);
+        return this.#toProduct(row);
     }
 
     async matching(text: string): Promise<Product[]> 
@@ -677,11 +677,11 @@ export class ProductsService
             return [];
         }
 
-        const found = await this.#ctx.db.select().from(products).where(this.#scoped());
+        const rows = await this.#ctx.db.select().from(products).where(this.#whereShop());
 
-        return found
+        return rows
             .filter((row) => row.searched.includes(looking))
-            .map((row) => this.#shown(row));
+            .map((row) => this.#toProduct(row));
     }
 
     async add(name: string, cents: number): Promise<Product> 
@@ -707,7 +707,7 @@ export class ProductsService
             const [counted] = await inside.db
                 .select({ many: count() })
                 .from(products)
-                .where(this.#scoped());
+                .where(this.#whereShop());
 
             if ((counted?.many ?? 0) >= this.#ctx.config.maxPerShop)
             {
@@ -721,7 +721,7 @@ export class ProductsService
             const [highest] = await inside.db
                 .select({ at: max(products.sequence) })
                 .from(products)
-                .where(this.#scoped());
+                .where(this.#whereShop());
 
             const row = {
                 id: crypto.randomUUID(),
@@ -739,7 +739,7 @@ export class ProductsService
 
             await inside.db.insert(products).values(row).onConflictDoNothing();
 
-            const [written] = await inside.db.select().from(products).where(this.#just(row.id));
+            const [written] = await inside.db.select().from(products).where(this.#whereId(row.id));
 
             if (written === undefined)
             {
@@ -748,7 +748,7 @@ export class ProductsService
 
             inside.events.emit("catalog.product.added", { id: row.id, shopId: row.shopId, cents });
 
-            return this.#shown(written);
+            return this.#toProduct(written);
         });
     }
 
@@ -761,7 +761,7 @@ export class ProductsService
 
     async setStatus(id: string, status: Status): Promise<Product>
     {
-        const where = this.#just(id);
+        const where = this.#whereId(id);
 
         return this.#ctx.tx(async (inside) =>
         {
@@ -769,7 +769,7 @@ export class ProductsService
 
             if (before === undefined)
             {
-                throw this.#missing();
+                throw this.#notFoundError();
             }
 
             const now = Status.schema.parse(before.status);
@@ -787,18 +787,18 @@ export class ProductsService
 
             if (row === undefined)
             {
-                throw this.#missing();
+                throw this.#notFoundError();
             }
 
             inside.events.emit("catalog.product.status-changed", { id, shopId: row.shopId, status });
 
-            return this.#shown(row);
+            return this.#toProduct(row);
         });
     }
 
     async remove(id: string): Promise<void>
     {
-        const where = this.#just(id);
+        const where = this.#whereId(id);
 
         await this.#ctx.tx(async (inside) =>
         {
@@ -811,7 +811,7 @@ export class ProductsService
 
             if (removed === undefined)
             {
-                throw this.#missing();
+                throw this.#notFoundError();
             }
 
             /* With the product: left behind, they are inherited by the next id. */
@@ -821,31 +821,31 @@ export class ProductsService
         });
     }
 
-    async countMine(): Promise<number>
+    async countForThisShop(): Promise<number>
     {
-        const found = await this.#ctx.db.select({ id: products.id }).from(products).where(this.#scoped());
+        const rows = await this.#ctx.db.select({ id: products.id }).from(products).where(this.#whereShop());
 
-        return found.length;
+        return rows.length;
     }
 
-    #scoped(status?: Status): SQL | undefined
+    #whereShop(status?: Status): SQL | undefined
     {
         const shop = this.#ctx.scoped<SQL>("products");
 
         return status === undefined ? shop : and(shop, eq(products.status, status));
     }
 
-    #just(id: string): SQL | undefined
+    #whereId(id: string): SQL | undefined
     {
-        return and(eq(products.id, id), this.#scoped());
+        return and(eq(products.id, id), this.#whereShop());
     }
 
-    #missing(): Refusal
+    #notFoundError(): Refusal
     {
         return new Refusal(404, "NOT_FOUND", "No such product.");
     }
 
-    #shown(row: Row): Product
+    #toProduct(row: Row): Product
     {
         return {
             id: row.id,
@@ -903,16 +903,16 @@ export const products = sqliteTable("catalog_products", {
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, startApi, type TestApi } from "./setup";
 
-let api: Serving;
+let api: TestApi;
 
 afterEach(async () =>
 {
     await api.stop();
 });
 
-async function made(): Promise<string>
+async function aProduct(): Promise<string>
 {
     const answer = await api.kernel.handle({
         method: "POST",
@@ -938,9 +938,9 @@ describe("a product's life", () =>
 {
     test("does not run backwards once it has left the shelves", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        const id = await made();
+        const id = await aProduct();
 
         expect((await moved(id, "listed")).status).toBe(200);
         expect((await moved(id, "withdrawn")).status).toBe(200);
@@ -949,17 +949,17 @@ describe("a product's life", () =>
 
     test("but a shop may drop a draft it never put up", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        expect((await moved(await made(), "withdrawn")).status).toBe(200);
+        expect((await moved(await aProduct(), "withdrawn")).status).toBe(200);
     });
 
     test("and the command that drops every draft still works", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        await made();
-        await made();
+        await aProduct();
+        await aProduct();
 
         await api.kernel.run("catalog.withdraw-drafts", {}, caller());
 
@@ -978,7 +978,7 @@ describe("a shop's limit", () =>
 {
     test("holds when everything arrives at once", async () =>
     {
-        api = await serving({ maxPerShop: 3 });
+        api = await startApi({ maxPerShop: 3 });
 
         const adding = Array.from({ length: 10 }, () => api.kernel.handle({
             method: "POST",
@@ -997,7 +997,7 @@ describe("a shop's limit", () =>
 
 import { describe, expect, test } from "vitest";
 
-import { caller, serving } from "./serving";
+import { caller, startApi } from "./setup";
 
 import { Ordering } from "@utils/Ordering";
 import { Text } from "@utils/Text";
@@ -1016,7 +1016,7 @@ describe("two names that read the same", () =>
 {
     test("and a word written in two alphabets is refused, not quietly doubled", async () =>
     {
-        const api = await serving();
+        const api = await startApi();
 
         const add = (name: string): Promise<{ status: number }> => api.kernel.handle({
             method: "POST", path: "/catalog/products", input: { name, cents: 100 }, caller: caller(),
@@ -1083,7 +1083,7 @@ describe("a search that folds away to nothing", () =>
 {
     test("answers nothing, not everything", async () =>
     {
-        const api = await serving();
+        const api = await startApi();
 
         await api.kernel.handle({
             method: "POST",
@@ -1092,14 +1092,14 @@ describe("a search that folds away to nothing", () =>
             caller: caller(),
         });
 
-        const found = await api.kernel.handle({
+        const rows = await api.kernel.handle({
             method: "GET",
             path: "/catalog/search",
             input: { text: " " },
             caller: caller(),
         });
 
-        expect((found.body as { products: unknown[] }).products).toEqual([]);
+        expect((rows.body as { products: unknown[] }).products).toEqual([]);
 
         await api.stop();
     });
@@ -1150,11 +1150,11 @@ import { eq } from "drizzle-orm";
 
 import { photos } from "../tables/photos";
 
-import type { Inside } from "../types/Context";
+import type { CatalogContext } from "../types/Context";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, startApi, type TestApi } from "./setup";
 
-let api: Serving;
+let api: TestApi;
 
 afterEach(async () =>
 {
@@ -1166,7 +1166,7 @@ function catalog(): { photos: { add: (id: string, url: string) => Promise<unknow
     return api.kernel.context("catalog", caller()).services as never;
 }
 
-async function made(): Promise<string>
+async function aProduct(): Promise<string>
 {
     const answer = await api.kernel.handle({
         method: "POST",
@@ -1182,9 +1182,9 @@ describe("a photo", () =>
 {
     test("is refused unless its url is one a browser could fetch", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        const id = await made();
+        const id = await aProduct();
 
         await expect(catalog().photos.add(id, "javascript:alert(1)")).rejects.toThrow();
         await expect(catalog().photos.add(id, "not a url")).rejects.toThrow();
@@ -1192,9 +1192,9 @@ describe("a photo", () =>
 
     test("and a product carries only so many", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        const id = await made();
+        const id = await aProduct();
 
         for (let at = 0; at < 50; at += 1)
         {
@@ -1206,15 +1206,15 @@ describe("a photo", () =>
 
     test("and goes when the product it belongs to goes", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        const id = await made();
+        const id = await aProduct();
 
         await catalog().photos.add(id, "https://pictures.example.test/one.jpg");
         await api.kernel.handle({ method: "DELETE", path: "/catalog/products/:id", input: { id }, caller: caller() });
 
         /* The dead id: a row left behind is inherited by whatever takes it next. */
-        const inside = api.kernel.context("catalog", caller()) as unknown as Inside;
+        const inside = api.kernel.context("catalog", caller()) as unknown as CatalogContext;
         const left = await inside.db.select().from(photos).where(eq(photos.productId, id));
 
         expect(left).toEqual([]);
@@ -1225,15 +1225,15 @@ describe("a photo", () =>
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { calling } from "@onetype/stack-api-kit/testing";
+import { createCaller } from "@onetype/stack-api-kit/testing";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, startApi, type TestApi } from "./setup";
 
-let api: Serving;
+let api: TestApi;
 
 beforeEach(async () =>
 {
-    api = await serving();
+    api = await startApi();
 });
 
 afterEach(async () =>
@@ -1272,7 +1272,7 @@ describe("permissions", () =>
 {
     test("refuses a reader who tries to write, naming no permission", async () =>
     {
-        const reader = calling(["catalog.read"], "u2", { shopId: "acme" });
+        const reader = createCaller(["catalog.read"], "u2", { shopId: "acme" });
 
         const answer = await api.kernel.handle({
             method: "POST",
@@ -1330,12 +1330,12 @@ describe("answers", () =>
 
     test("sends back only what the schema names", async () =>
     {
-        const made = await added();
+        const created = await added();
 
         const answer = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products/:id",
-            input: { id: made.id },
+            input: { id: created.id },
             caller: caller(),
         });
 
@@ -1348,7 +1348,7 @@ describe("pages", () =>
 {
     test("walks a cursor without repeating or skipping", async () =>
     {
-        api = await serving({ pageSize: 2 });
+        api = await startApi({ pageSize: 2 });
 
         for (const name of ["Delta", "Alpha", "Echo", "Bravo", "Charlie"])
         {
@@ -1386,9 +1386,9 @@ describe("pages", () =>
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { caller, nobody, serving, type Serving } from "./serving";
+import { caller, nobody, startApi, type TestApi } from "./setup";
 
-let api: Serving;
+let api: TestApi;
 
 afterEach(async () =>
 {
@@ -1411,7 +1411,7 @@ describe("what a shop may reach", () =>
 {
     test("answers only its own products", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         await added("acme", "Ours");
         await added("other", "Theirs");
@@ -1428,7 +1428,7 @@ describe("what a shop may reach", () =>
 
     test("answers 404 for another shop's real id, as for one that never existed", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         const theirs = await added("other", "Theirs");
 
@@ -1444,23 +1444,23 @@ describe("what a shop may reach", () =>
 
     test("writes a product into the caller's shop, whatever the body says", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        const mine = await added("acme", "Ours");
+        const ours = await added("acme", "Ours");
 
-        const shown = await api.kernel.handle({
+        const listing = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products/:id",
-            input: { id: mine },
+            input: { id: ours },
             caller: caller("other"),
         });
 
-        expect(shown.status).toBe(404);
+        expect(listing.status).toBe(404);
     });
 
     test("refuses a caller carrying no shop, rather than defaulting", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         const answer = await api.kernel.handle({
             method: "GET",
@@ -1473,21 +1473,21 @@ describe("what a shop may reach", () =>
     });
 });
 
-==> src/plugins/catalog/tests/serving.ts
+==> src/plugins/catalog/tests/setup.ts
 
-import { booting, calling } from "@onetype/stack-api-kit/testing";
+import { startTestKernel, createCaller } from "@onetype/stack-api-kit/testing";
 
 import catalog from "../plugin";
 
-import type { Booted, Caller } from "@onetype/stack-api-kit/testing";
+import type { TestKernel, Caller } from "@onetype/stack-api-kit/testing";
 import type { Config } from "../schemas/Config";
 import type { Rows } from "../types/Rows";
 
-export type Serving = Booted;
+export type TestApi = TestKernel;
 
-export function serving(config: Partial<Config> = {}, now?: () => number): Promise<Serving>
+export function startApi(config: Partial<Config> = {}, now?: () => number): Promise<TestApi>
 {
-    return booting({
+    return startTestKernel({
         plugins: [catalog],
         config: { catalog: config },
         ...(now !== undefined && { now }),
@@ -1500,15 +1500,15 @@ export function caller(
     id = "11111111-1111-4111-8111-111111111111",
 ): Caller
 {
-    return calling(permissions, id, { shopId });
+    return createCaller(permissions, id, { shopId });
 }
 
 export function nobody(): Caller
 {
-    return calling(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");
+    return createCaller(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");
 }
 
-export function rows(api: Serving): Rows
+export function rows(api: TestApi): Rows
 {
     return api.kernel.context("catalog").db as Rows;
 }
@@ -1517,9 +1517,9 @@ export function rows(api: Serving): Rows
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, startApi, type TestApi } from "./setup";
 
-let api: Serving;
+let api: TestApi;
 
 afterEach(async () =>
 {
@@ -1554,7 +1554,7 @@ describe("ordering", () =>
 {
     test("puts an accented name where a reader expects it, not after Z", async () =>
     {
-        api = await serving({ locale: "de" });
+        api = await startApi({ locale: "de" });
 
         for (const name of ["Zebra", "Äpfel", "Apfel", "Österreich", "Ostern"])
         {
@@ -1566,7 +1566,7 @@ describe("ordering", () =>
 
     test("orders Turkish the way Turkish is ordered", async () =>
     {
-        api = await serving({ locale: "tr" });
+        api = await startApi({ locale: "tr" });
 
         for (const name of ["Simit", "Şeker", "Sucuk"])
         {
@@ -1579,7 +1579,7 @@ describe("ordering", () =>
     /* A tag naming its script gets that order; the stack picks none. */
     test("orders by the script the caller named", async () =>
     {
-        api = await serving({ locale: "sr-Latn" });
+        api = await startApi({ locale: "sr-Latn" });
 
         for (const name of ["Cvet", "Ćuprija", "Čvor"])
         {
@@ -1591,7 +1591,7 @@ describe("ordering", () =>
 
     test("and falls back to English rather than failing on a tag it cannot read", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         for (const name of ["Beta", "Alpha"])
         {
@@ -1606,7 +1606,7 @@ describe("matching", () =>
 {
     test("finds an accented name from an unaccented search", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         await add("Übergrößen");
 
@@ -1625,7 +1625,7 @@ describe("uniqueness", () =>
 {
     test("refuses a second name that differs only by case", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         expect(await add("Über")).toBe(201);
         expect(await add("ÜBER")).toBe(409);
@@ -1633,7 +1633,7 @@ describe("uniqueness", () =>
 
     test("but lets two real words coexist, accents and all", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         expect(await add("Apfel")).toBe(201);
         expect(await add("Äpfel")).toBe(201);
@@ -1642,7 +1642,7 @@ describe("uniqueness", () =>
     /* A ligature folds, but the fold that joins "Model 2" and "Model ²" does not. */
     test("refuses a name hidden behind characters that draw nothing", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         expect(await add("Office")).toBe(201);
         expect(await add("Offi\u200Bce")).toBe(409);
@@ -1650,7 +1650,7 @@ describe("uniqueness", () =>
 
     test("but keeps two names a reader can tell apart", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         expect(await add("Model 2")).toBe(201);
         expect(await add("Model ²")).toBe(201);
@@ -1661,7 +1661,7 @@ describe("length", () =>
 {
     test("counts characters a reader sees, not the units that hold them", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         expect(await add("👨‍👩‍👧‍👦".repeat(20))).toBe(201);
         expect(await add("あ".repeat(121))).toBe(400);
@@ -1676,7 +1676,7 @@ import type { Config } from "../schemas/Config";
 import type { Rows } from "./Rows";
 import type { Services } from "./Services";
 
-export type Inside = Context<Config, Services, Rows>;
+export type CatalogContext = Context<Config, Services, Rows>;
 
 ==> src/plugins/catalog/types/Listing.ts
 
@@ -1709,7 +1709,7 @@ export type Services = {
 
 ==> src/plugins/catalog/utils/Paging.ts
 
-class PagingUtil
+class Cursor
 {
     from<Row extends { id: string }>(sorted: readonly Row[], size: number, after?: string):
         { page: readonly Row[]; after?: string }
@@ -1725,7 +1725,7 @@ class PagingUtil
     }
 }
 
-export const Paging = new PagingUtil();
+export const Paging = new Cursor();
 
 ==> src/plugins/orders/plugin.ts
 
@@ -1734,11 +1734,11 @@ import { z } from "zod";
 
 import { Config } from "./schemas/Config";
 import { OrdersService } from "./services/orders";
-import { Reserving } from "./services/Reserving";
+import { ReservationCounter } from "./services/ReservationCounter";
 import { orderRoutes } from "./routes/orders";
 import { orders } from "./tables/orders";
 
-import type { Inside } from "./types/Context";
+import type { OrderContext } from "./types/Context";
 import type { Rows } from "./types/Rows";
 import type { Services } from "./types/Services";
 
@@ -1800,7 +1800,7 @@ export default definePlugin.over<Rows, Services>()("orders", {
     },
 
     listens: {
-        "catalog.product.removed": defineListener<Inside>()(
+        "catalog.product.removed": defineListener<OrderContext>()(
             z.object({ id: z.uuid(), shopId: z.string() }),
             {
             describe: "Lets go of every hold on a product that no longer exists.",
@@ -1819,7 +1819,7 @@ export default definePlugin.over<Rows, Services>()("orders", {
     },
 
     participates: {
-        "catalog.product.before-list": defineParticipant<Inside>()(
+        "catalog.product.before-list": defineParticipant<OrderContext>()(
             z.object({ id: z.uuid(), name: z.string(), cents: z.number() }),
             {
                 describe: "Refuses a product priced at nothing, which no order could charge for.",
@@ -1834,15 +1834,15 @@ export default definePlugin.over<Rows, Services>()("orders", {
     },
 
     commands: {
-        "orders.release-holds": defineCommand<Inside>()({
+        "orders.release-holds": defineCommand<OrderContext>()({
             describe: "Lets go of one shop's reservations whose moment has passed.",
 
             /* The payload is the boundary: a scheduled command has no caller to scope by. */
             schema: z.object({ shopId: z.string().min(1) }),
             run: async (given, ctx) =>
             {
-                const mine = ctx.forScope(given.shopId);
-                const released = await mine.services.orders.releaseHolds();
+                const scoped = ctx.forScope(given.shopId);
+                const released = await scoped.services.orders.releaseHolds();
 
                 if (released > 0)
                 {
@@ -1855,14 +1855,14 @@ export default definePlugin.over<Rows, Services>()("orders", {
     setup: (ctx) =>
     {
         /* Built once: a service is made per request and would count from zero. */
-        ctx.owns(new Reserving());
+        ctx.owns(new ReservationCounter());
 
         ctx.log.info("orders ready", { holdSeconds: ctx.config.holdSeconds });
     },
 
     teardown: (ctx) =>
     {
-        const counter = ctx.owned<Reserving>();
+        const counter = ctx.owned<ReservationCounter>();
 
         ctx.log.info("orders stopped", { reserved: counter?.count() ?? 0 });
     },
@@ -1972,11 +1972,11 @@ import { Order } from "../schemas/Order";
 import { OrderPage } from "../schemas/OrderPage";
 
 import type { Endpoint } from "@onetype/stack-api-kit";
-import type { Inside } from "../types/Context";
+import type { OrderContext } from "../types/Context";
 
-const route = defineRoute<Inside>();
+const route = defineRoute<OrderContext>();
 
-export const orderRoutes: readonly Endpoint<Inside>[] = [
+export const orderRoutes: readonly Endpoint<OrderContext>[] = [
     route({
         method: "GET",
         path: "/orders",
@@ -2113,10 +2113,10 @@ import { Catalog } from "@plugins/catalog";
 import { Refusal } from "@onetype/stack-api-kit";
 
 import { Charge } from "../schemas/Charge";
-import type { Reserving } from "./Reserving";
+import type { ReservationCounter } from "./ReservationCounter";
 import { orders } from "../tables/orders";
 
-import type { Inside } from "../types/Context";
+import type { OrderContext } from "../types/Context";
 import type { Order } from "../schemas/Order";
 import type { OrderPage } from "../schemas/OrderPage";
 import type { SQL } from "drizzle-orm";
@@ -2126,26 +2126,26 @@ type Row = typeof orders.$inferSelect;
 
 export class OrdersService
 {
-    readonly #ctx: Inside;
+    readonly #ctx: OrderContext;
 
-    constructor(ctx: Inside)
+    constructor(ctx: OrderContext)
     {
         this.#ctx = ctx;
     }
 
     async list(): Promise<OrderPage>
     {
-        const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
+        const rows = await this.#ctx.db.select().from(orders).where(this.#whereShop());
         const now = this.#ctx.now();
 
         /* A hold past its moment reads as gone, swept or not. */
         const [counted] = await this.#ctx.db
             .select({ total: count() })
             .from(orders)
-            .where(and(this.#scoped("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
+            .where(and(this.#whereShop("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
 
         return {
-            orders: found.map((row) => this.#shown(
+            orders: rows.map((row) => this.#toOrder(
                 row.status === "reserved" && row.holdsUntil <= now ? { ...row, status: "expired" } : row,
             )),
             reserved: counted?.total ?? 0,
@@ -2154,14 +2154,14 @@ export class OrdersService
 
     async get(id: string): Promise<Order>
     {
-        const [row] = await this.#ctx.db.select().from(orders).where(this.#just(id));
+        const [row] = await this.#ctx.db.select().from(orders).where(this.#whereId(id));
 
         if (row === undefined)
         {
-            throw this.#missing();
+            throw this.#notFoundError();
         }
 
-        return this.#shown(row);
+        return this.#toOrder(row);
     }
 
     async reserve(productId: string): Promise<Order>
@@ -2188,7 +2188,7 @@ export class OrdersService
             const [highest] = await inside.db
                 .select({ at: max(orders.sequence) })
                 .from(orders)
-                .where(this.#scoped());
+                .where(this.#whereShop());
 
             const row = {
                 id: crypto.randomUUID(),
@@ -2203,14 +2203,14 @@ export class OrdersService
 
             await inside.db.insert(orders).values(row);
 
-            /* Inside, so a rolled-back reservation schedules no release. */
+            /* Inside the transaction, so a rolled-back reservation schedules none. */
             inside.commands.later("orders.release-holds", { shopId: row.shopId }, this.#ctx.config.holdSeconds);
 
-            this.#ctx.owned<Reserving>()?.took();
+            this.#ctx.owned<ReservationCounter>()?.increment();
 
             inside.events.emit("orders.order.reserved", { id: row.id, shopId: row.shopId, productId: product.id });
 
-            return this.#shown(row);
+            return this.#toOrder(row);
         });
     }
 
@@ -2225,7 +2225,7 @@ export class OrdersService
                 .update(orders)
                 .set({ status: "paid", paying: attempt })
                 .where(and(
-                    this.#just(id),
+                    this.#whereId(id),
                     eq(orders.status, "reserved"),
                     gt(orders.holdsUntil, this.#ctx.now()),
                 ))
@@ -2240,7 +2240,7 @@ export class OrdersService
 
         try
         {
-            await this.#charged(claimed.cents, claimed.id);
+            await this.#charge(claimed.cents, claimed.id);
         }
         catch (cause)
         {
@@ -2249,26 +2249,26 @@ export class OrdersService
                 this.#ctx.db
                     .update(orders)
                     .set({ status: claimed.holdsUntil > this.#ctx.now() ? "reserved" : "expired", paying: null })
-                    .where(and(this.#just(id), eq(orders.paying, attempt))));
+                    .where(and(this.#whereId(id), eq(orders.paying, attempt))));
 
             throw cause;
         }
 
         await this.#ctx.write(() =>
-            this.#ctx.db.update(orders).set({ paying: null }).where(and(this.#just(id), eq(orders.paying, attempt))));
+            this.#ctx.db.update(orders).set({ paying: null }).where(and(this.#whereId(id), eq(orders.paying, attempt))));
 
         return this.#ctx.tx(async (inside) =>
         {
-            const [row] = await inside.db.select().from(orders).where(this.#just(id));
+            const [row] = await inside.db.select().from(orders).where(this.#whereId(id));
 
             if (row === undefined)
             {
-                throw this.#missing();
+                throw this.#notFoundError();
             }
 
             inside.events.emit("orders.order.paid", { id, shopId: row.shopId, cents: row.cents });
 
-            return this.#shown(row);
+            return this.#toOrder(row);
         });
     }
 
@@ -2279,12 +2279,12 @@ export class OrdersService
             const [row] = await inside.db
                 .update(orders)
                 .set({ status: "cancelled" })
-                .where(and(this.#just(id), eq(orders.status, "reserved")))
+                .where(and(this.#whereId(id), eq(orders.status, "reserved")))
                 .returning();
 
             if (row === undefined)
             {
-                throw this.#missing();
+                throw this.#notFoundError();
             }
 
             inside.events.emit("orders.order.cancelled", { id, shopId: row.shopId });
@@ -2299,7 +2299,7 @@ export class OrdersService
                 .update(orders)
                 .set({ status: "expired" })
                 .where(and(
-                    this.#scoped("reserved"),
+                    this.#whereShop("reserved"),
                     lte(orders.holdsUntil, this.#ctx.now()),
                 ))
                 .returning({ id: orders.id, shopId: orders.shopId });
@@ -2320,7 +2320,7 @@ export class OrdersService
                 .update(orders)
                 .set({ status: "cancelled" })
                 .where(and(
-                    this.#scoped("reserved"),
+                    this.#whereShop("reserved"),
                     eq(orders.productId, productId),
                 ))
                 .returning({ id: orders.id }));
@@ -2328,7 +2328,7 @@ export class OrdersService
         return cancelled.length;
     }
 
-    async #charged(cents: number, reference: string): Promise<void>
+    async #charge(cents: number, reference: string): Promise<void>
     {
         const url = this.#ctx.config.payments;
 
@@ -2359,24 +2359,24 @@ export class OrdersService
         }
     }
 
-    #scoped(status?: Status): SQL | undefined
+    #whereShop(status?: Status): SQL | undefined
     {
         const shop = this.#ctx.scoped<SQL>("orders");
 
         return status === undefined ? shop : and(shop, eq(orders.status, status));
     }
 
-    #just(id: string): SQL | undefined
+    #whereId(id: string): SQL | undefined
     {
-        return and(eq(orders.id, id), this.#scoped());
+        return and(eq(orders.id, id), this.#whereShop());
     }
 
-    #missing(): Refusal
+    #notFoundError(): Refusal
     {
         return new Refusal(404, "NOT_FOUND", "No such order.");
     }
 
-    #shown(row: Row): Order
+    #toOrder(row: Row): Order
     {
         return {
             id: row.id,
@@ -2388,13 +2388,13 @@ export class OrdersService
     }
 }
 
-==> src/plugins/orders/services/Reserving.ts
+==> src/plugins/orders/services/ReservationCounter.ts
 
-export class Reserving
+export class ReservationCounter
 {
     #taken = 0;
 
-    took(): void
+    increment(): void
     {
         this.#taken += 1;
     }
@@ -2431,11 +2431,11 @@ export const orders = sqliteTable("orders_orders", {
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, startApi, type TestApi } from "./setup";
 
 const PAYMENTS = "https://payments.example.test";
 
-let api: Serving;
+let api: TestApi;
 
 afterEach(async () =>
 {
@@ -2444,14 +2444,14 @@ afterEach(async () =>
 
 async function listed(cents = 2500): Promise<string>
 {
-    const made = await api.kernel.handle({
+    const created = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `A product ${crypto.randomUUID()}`, cents },
         caller: caller(),
     });
 
-    const product = made.body as { id: string };
+    const product = created.body as { id: string };
 
     await api.kernel.handle({
         method: "PATCH",
@@ -2467,7 +2467,7 @@ describe("the price comes from the plugin that owns it", () =>
 {
     test("and never from the caller", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         const answer = await api.kernel.handle({
             method: "POST",
@@ -2481,9 +2481,9 @@ describe("the price comes from the plugin that owns it", () =>
 
     test("so a product nobody listed cannot be ordered", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
-        const made = await api.kernel.handle({
+        const created = await api.kernel.handle({
             method: "POST",
             path: "/catalog/products",
             input: { name: "Still a draft", cents: 100 },
@@ -2493,7 +2493,7 @@ describe("the price comes from the plugin that owns it", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: (made.body as { id: string }).id },
+            input: { productId: (created.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2505,7 +2505,7 @@ describe("what it hears", () =>
 {
     test("lets go of holds on a product that was removed", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         const product = await listed();
 
@@ -2531,7 +2531,7 @@ describe("what it refuses in another plugin's hook", () =>
 {
     test("a product priced at nothing", async () =>
     {
-        api = await serving();
+        api = await startApi();
 
         const answer = await api.kernel.handle({
             method: "POST",
@@ -2549,9 +2549,9 @@ describe("the partner it dials", () =>
 {
     test("is charged what the product costs", async () =>
     {
-        api = await serving({ payments: PAYMENTS }, undefined, () => ({ paid: true, reference: "r" }));
+        api = await startApi({ payments: PAYMENTS }, undefined, () => ({ paid: true, reference: "r" }));
 
-        const made = await api.kernel.handle({
+        const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listed(1750) },
@@ -2561,7 +2561,7 @@ describe("the partner it dials", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (made.body as { id: string }).id },
+            input: { id: (created.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2572,13 +2572,13 @@ describe("the partner it dials", () =>
 
     test("and a refusal leaves the order unpaid", async () =>
     {
-        api = await serving(
+        api = await startApi(
             { payments: PAYMENTS },
             undefined,
             () => ({ paid: false, reference: "r" }),
         );
 
-        const made = await api.kernel.handle({
+        const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listed() },
@@ -2588,15 +2588,15 @@ describe("the partner it dials", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (made.body as { id: string }).id },
+            input: { id: (created.body as { id: string }).id },
             caller: caller(),
         });
 
         expect(answer.status).toBe(402);
 
-        const shown = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
+        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
 
-        expect(shown.body).toMatchObject({ reserved: 1 });
+        expect(listing.body).toMatchObject({ reserved: 1 });
     });
 });
 
@@ -2604,9 +2604,9 @@ describe("what the partner says is input", () =>
 {
     test("an answer we cannot read refuses the payment, rather than believing it", async () =>
     {
-        api = await serving({ payments: PAYMENTS }, undefined, () => ({ ok: "sure" }));
+        api = await startApi({ payments: PAYMENTS }, undefined, () => ({ ok: "sure" }));
 
-        const made = await api.kernel.handle({
+        const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listed() },
@@ -2616,7 +2616,7 @@ describe("what the partner says is input", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (made.body as { id: string }).id },
+            input: { id: (created.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2625,9 +2625,9 @@ describe("what the partner says is input", () =>
 
     test("a host the plugin never declared is refused before it is dialled", async () =>
     {
-        api = await serving({ payments: "https://evil.test" });
+        api = await startApi({ payments: "https://evil.test" });
 
-        const made = await api.kernel.handle({
+        const created = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listed() },
@@ -2637,7 +2637,7 @@ describe("what the partner says is input", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (made.body as { id: string }).id },
+            input: { id: (created.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2650,9 +2650,9 @@ describe("what the partner says is input", () =>
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, startApi, type TestApi } from "./setup";
 
-let api: Serving;
+let api: TestApi;
 let clock = 1_700_000_000_000;
 
 afterEach(async () =>
@@ -2663,14 +2663,14 @@ afterEach(async () =>
 
 async function listed(who = caller()): Promise<string> 
 {
-    const made = await api.kernel.handle({
+    const created = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `A product ${crypto.randomUUID()}`, cents: 2500 },
         caller: who,
     });
 
-    const product = made.body as { id: string };
+    const product = created.body as { id: string };
 
     await api.kernel.handle({
         method: "PATCH",
@@ -2706,7 +2706,7 @@ describe("a hold", () =>
 {
     test("stays while its moment has not passed", async () =>
     {
-        api = await serving({ holdSeconds: 600 }, () => clock);
+        api = await startApi({ holdSeconds: 600 }, () => clock);
 
         const order = await reserved();
 
@@ -2719,7 +2719,7 @@ describe("a hold", () =>
 
     test("is let go once it has", async () =>
     {
-        api = await serving({ holdSeconds: 600 }, () => clock);
+        api = await startApi({ holdSeconds: 600 }, () => clock);
 
         const order = await reserved();
 
@@ -2733,7 +2733,7 @@ describe("a hold", () =>
 
     test("cannot be paid for once it has expired", async () =>
     {
-        api = await serving({ holdSeconds: 600 }, () => clock);
+        api = await startApi({ holdSeconds: 600 }, () => clock);
 
         const order = await reserved();
 
@@ -2758,13 +2758,13 @@ import { eq } from "drizzle-orm";
 
 import { orders } from "../tables/orders";
 
-import { caller, listed, reserved, serving, type Serving } from "./serving";
+import { caller, listed, reserved, startApi, type TestApi } from "./setup";
 
-import type { Inside } from "../types/Context";
+import type { OrderContext } from "../types/Context";
 
 const PAYMENTS = "https://payments.example.test";
 
-let api: Serving;
+let api: TestApi;
 let charges = 0;
 let clock = 1_700_000_000_000;
 
@@ -2799,7 +2799,7 @@ function seen(): Promise<{ body: unknown }>
 
 async function status(id: string): Promise<string | undefined>
 {
-    const inside = api.kernel.context("orders", who) as unknown as Inside;
+    const inside = api.kernel.context("orders", who) as unknown as OrderContext;
     const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
 
     return row?.status;
@@ -2810,7 +2810,7 @@ describe("an order paid from two places at once", () =>
 {
     test("is charged once, whatever the timing", async () =>
     {
-        api = await serving({ payments: PAYMENTS }, undefined, counting());
+        api = await startApi({ payments: PAYMENTS }, undefined, counting());
 
         const id = await reserved(api, who);
 
@@ -2821,7 +2821,7 @@ describe("an order paid from two places at once", () =>
 
     test("and cannot be paid after it was cancelled", async () =>
     {
-        api = await serving({ payments: PAYMENTS }, undefined, counting());
+        api = await startApi({ payments: PAYMENTS }, undefined, counting());
 
         const id = await reserved(api, who);
 
@@ -2842,7 +2842,7 @@ describe("releasing holds that have run out", () =>
 {
     test("leaves another shop's reservations alone", async () =>
     {
-        api = await serving({ holdSeconds: 600 }, () => clock);
+        api = await startApi({ holdSeconds: 600 }, () => clock);
 
         const acme = caller("acme");
         const other = caller("other", undefined, "22222222-2222-4222-8222-222222222222");
@@ -2855,15 +2855,15 @@ describe("releasing holds that have run out", () =>
 
         await api.due();
 
-        const shown = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
-        const row = (shown.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === theirs);
+        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
+        const row = (listing.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === theirs);
 
         expect(row?.status).toBe("expired");
     });
 
     test("and refuses a caller reaching for a shop that is not theirs", async () =>
     {
-        api = await serving({ holdSeconds: 600 }, () => clock);
+        api = await startApi({ holdSeconds: 600 }, () => clock);
 
         await expect(api.kernel.run("orders.release-holds", { shopId: "other" }, caller("acme"))).rejects.toThrow();
         await expect(api.kernel.run("orders.release-holds", {}, caller("acme"))).rejects.toThrow();
@@ -2874,21 +2874,21 @@ describe("reserving a product", () =>
 {
     test("refuses one taken off the shelves while the request was in flight", async () =>
     {
-        api = await serving({ payments: PAYMENTS }, undefined, counting());
+        api = await startApi({ payments: PAYMENTS }, undefined, counting());
 
         const product = await listed(api, who);
 
-        const [held] = await Promise.all([
+        const [reserving] = await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: who }),
             api.kernel.handle({ method: "PATCH", path: "/catalog/products/:id", input: { id: product, status: "withdrawn" }, caller: who }),
         ]);
 
-        if (held.status !== 201)
+        if (reserving.status !== 201)
         {
             return;
         }
 
-        const id = (held.body as { id: string }).id;
+        const id = (reserving.body as { id: string }).id;
         const paid = await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
         expect(paid.status).not.toBe(201);
@@ -2899,7 +2899,7 @@ describe("a card the bank refused", () =>
 {
     test("does not put back a hold the sweep already let go of", async () =>
     {
-        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
+        api = await startApi({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
         {
             clock += 601_000;
 
@@ -2910,13 +2910,13 @@ describe("a card the bank refused", () =>
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
-        /* The row itself: a shop is shown nothing of an expired hold. */
+        /* The row itself: a shop is listing nothing of an expired hold. */
         expect(await status(id)).toBe("expired");
     });
 
     test("and leaves nothing marked paid that nobody was charged for", async () =>
     {
-        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
+        api = await startApi({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
         {
             charges += 1;
 
@@ -2934,18 +2934,18 @@ describe("a card the bank refused", () =>
     });
 });
 
-describe("what a shop is shown", () =>
+describe("what a shop is listing", () =>
 {
     test("says the same thing in the count and in the rows", async () =>
     {
-        api = await serving({ holdSeconds: 600 }, () => clock);
+        api = await startApi({ holdSeconds: 600 }, () => clock);
 
         const id = await reserved(api, who);
 
         clock += 601_000;
 
-        const shown = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-        const answer = shown.body as { reserved: number; orders: { id: string; status: string }[] };
+        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const answer = listing.body as { reserved: number; orders: { id: string; status: string }[] };
         const row = answer.orders.find((order) => order.id === id);
 
         expect([answer.reserved, row?.status]).toEqual([0, "expired"]);
@@ -2958,7 +2958,7 @@ describe("a slow refusal", () =>
     {
         let first = true;
 
-        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, async () =>
+        api = await startApi({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, async () =>
         {
             if (first)
             {
@@ -2980,7 +2980,7 @@ describe("a slow refusal", () =>
         await new Promise((keep) => setTimeout(keep, 5));
 
         /* The first payer still waits, so put it back and let a second win it. */
-        const inside = api.kernel.context("orders", who) as unknown as Inside;
+        const inside = api.kernel.context("orders", who) as unknown as OrderContext;
 
         await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));
 
@@ -2992,25 +2992,25 @@ describe("a slow refusal", () =>
     });
 });
 
-==> src/plugins/orders/tests/serving.ts
+==> src/plugins/orders/tests/setup.ts
 
-import { booting, calling } from "@onetype/stack-api-kit/testing";
+import { startTestKernel, createCaller } from "@onetype/stack-api-kit/testing";
 import catalog from "@plugins/catalog/plugin";
 
 import orders from "../plugin";
 
-import type { Booted, Caller, Outbound } from "@onetype/stack-api-kit/testing";
+import type { TestKernel, Caller, Outbound } from "@onetype/stack-api-kit/testing";
 import type { Config } from "../schemas/Config";
 
-export type Serving = Booted;
+export type TestApi = TestKernel;
 
-export function serving(
+export function startApi(
     config: Partial<Config> = {},
     now: () => number = () => 1_700_000_000_000,
     answers: (call: Outbound) => unknown = () => ({ paid: true, reference: "r" }),
-): Promise<Serving>
+): Promise<TestApi>
 {
-    return booting({
+    return startTestKernel({
         plugins: [catalog, orders],
         config: { orders: config },
         schedule: true,
@@ -3025,20 +3025,20 @@ export function caller(
     id = "11111111-1111-4111-8111-111111111111",
 ): Caller
 {
-    return calling(permissions, id, { shopId });
+    return createCaller(permissions, id, { shopId });
 }
 
 /** A product this shop sells, listed and ready to be ordered. */
-export async function listed(api: Serving, who = caller(), cents = 2500): Promise<string>
+export async function listed(api: TestApi, who = caller(), cents = 2500): Promise<string>
 {
-    const made = await api.kernel.handle({
+    const created = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `P ${crypto.randomUUID()}`, cents },
         caller: who,
     });
 
-    const product = made.body as { id: string };
+    const product = created.body as { id: string };
 
     await api.kernel.handle({
         method: "PATCH",
@@ -3051,16 +3051,16 @@ export async function listed(api: Serving, who = caller(), cents = 2500): Promis
 }
 
 /** One of those, held for the caller. */
-export async function reserved(api: Serving, who = caller()): Promise<string>
+export async function reserved(api: TestApi, who = caller()): Promise<string>
 {
-    const made = await api.kernel.handle({
+    const created = await api.kernel.handle({
         method: "POST",
         path: "/orders",
         input: { productId: await listed(api, who) },
         caller: who,
     });
 
-    return (made.body as { id: string }).id;
+    return (created.body as { id: string }).id;
 }
 
 ==> src/plugins/orders/types/Context.ts
@@ -3071,7 +3071,7 @@ import type { Config } from "../schemas/Config";
 import type { Rows } from "./Rows";
 import type { Services } from "./Services";
 
-export type Inside = Context<Config, Services, Rows>;
+export type OrderContext = Context<Config, Services, Rows>;
 
 ==> src/plugins/orders/types/Rows.ts
 

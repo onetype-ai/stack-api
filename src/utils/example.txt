@@ -9,7 +9,7 @@ Rewrite this with:   node tools/pack/utils.mjs pack Ordering Text
 
 ==> src/utils/Ordering.ts
 
-class OrderingUtil
+class Collation
 {
     by(locale: string): Intl.Collator
     {
@@ -25,11 +25,11 @@ class OrderingUtil
     }
 }
 
-export const Ordering = new OrderingUtil();
+export const Ordering = new Collation();
 
 ==> src/utils/Text.ts
 
-class TextUtil
+class Folding
 {
     /* NFD lifts a mark above a letter; a stroke through one is its own. */
     #stroked = new Map(Object.entries({
@@ -39,7 +39,7 @@ class TextUtil
 
     searched(raw: string): string
     {
-        return this.#flattened(raw)
+        return this.#flatten(raw)
             .replace(/\p{Diacritic}/gu, "")
             .replace(/[øđłħŧƀɖƶəæœßþðŋı]/gu, (letter) => this.#stroked.get(letter) ?? letter);
     }
@@ -47,8 +47,8 @@ class TextUtil
     /* NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name. */
     same(raw: string): string
     {
-        return this.#flattened(raw)
-            .replace(/[\uFB00-\uFB06]/gu, (tie) => TextUtil.#tied.get(tie) ?? tie)
+        return this.#flatten(raw)
+            .replace(/[\uFB00-\uFB06]/gu, (tie) => Folding.#tied.get(tie) ?? tie)
             .normalize("NFC");
     }
 
@@ -62,7 +62,7 @@ class TextUtil
     {
         return this.visible(raw).split(/\s+/u).some((word) =>
         {
-            return TextUtil.#alphabets.filter((alphabet) => alphabet.test(word)).length > 1;
+            return Folding.#alphabets.filter((alphabet) => alphabet.test(word)).length > 1;
         });
     }
 
@@ -88,7 +88,7 @@ class TextUtil
         return raw.replace(/[\p{Cf}\u00AD\u200B\uFEFF]/gu, (mark) => (mark === "\u200C" || mark === "\u200D" ? mark : ""));
     }
 
-    #flattened(raw: string): string
+    #flatten(raw: string): string
     {
         return this.visible(raw)
             .normalize("NFD")
@@ -98,4 +98,4 @@ class TextUtil
     }
 }
 
-export const Text = new TextUtil();
+export const Text = new Folding();
