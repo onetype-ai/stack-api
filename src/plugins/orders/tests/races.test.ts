@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { orders } from "../tables/orders";
 
-import { caller, serving, type Serving } from "./serving";
+import { caller, listed, reserved, serving, type Serving } from "./serving";
 
 import type { Inside } from "../types/Context";
 
@@ -21,40 +21,9 @@ afterEach(async () =>
     clock = 1_700_000_000_000;
 });
 
-async function listed(who: ReturnType<typeof caller>): Promise<string>
-{
-    const made = await api.kernel.handle({
-        method: "POST",
-        path: "/catalog/products",
-        input: { name: `P ${crypto.randomUUID()}`, cents: 2500 },
-        caller: who,
-    });
+const who = caller("acme");
 
-    const product = made.body as { id: string };
-
-    await api.kernel.handle({
-        method: "PATCH",
-        path: "/catalog/products/:id",
-        input: { id: product.id, status: "listed" },
-        caller: who,
-    });
-
-    return product.id;
-}
-
-async function reserved(who: ReturnType<typeof caller>): Promise<string>
-{
-    const held = await api.kernel.handle({
-        method: "POST",
-        path: "/orders",
-        input: { productId: await listed(who), quantity: 1 },
-        caller: who,
-    });
-
-    return (held.body as { id: string }).id;
-}
-
-function counting(): (call: { url: string }) => unknown
+function counting(): () => unknown
 {
     return () =>
     {
@@ -64,20 +33,34 @@ function counting(): (call: { url: string }) => unknown
     };
 }
 
+function pay(id: string): Promise<{ status: number }>
+{
+    return api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+}
+
+function seen(): Promise<{ body: unknown }>
+{
+    return api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+}
+
+async function status(id: string): Promise<string | undefined>
+{
+    const inside = api.kernel.context("orders", who) as unknown as Inside;
+    const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
+
+    return row?.status;
+}
+
+
 describe("an order paid from two places at once", () =>
 {
     test("is charged once, whatever the timing", async () =>
     {
         api = await serving({ payments: PAYMENTS }, undefined, counting());
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
-        const pay = (): Promise<unknown> => api.kernel.handle({
-            method: "POST", path: "/orders/:id/pay", input: { id }, caller: who,
-        });
-
-        await Promise.all([pay(), pay()]);
+        await Promise.all([pay(id), pay(id)]);
 
         expect(charges).toBe(1);
     });
@@ -86,16 +69,15 @@ describe("an order paid from two places at once", () =>
     {
         api = await serving({ payments: PAYMENTS }, undefined, counting());
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
         await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who }),
             api.kernel.handle({ method: "DELETE", path: "/orders/:id", input: { id }, caller: who }),
         ]);
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+        const answer = await seen();
+        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
 
         expect(["paid", "cancelled"]).toContain(row?.status);
         expect(charges).toBe(row?.status === "paid" ? 1 : 0);
@@ -113,8 +95,8 @@ describe("releasing holds that have run out", () =>
 
         // Both are old enough. The sweep runs on schedule, once per shop, with
         // nobody calling it.
-        await reserved(acme);
-        const theirs = await reserved(other);
+        await reserved(api, acme);
+        const theirs = await reserved(api, other);
 
         clock += 601_000;
 
@@ -141,8 +123,7 @@ describe("reserving a product", () =>
     {
         api = await serving({ payments: PAYMENTS }, undefined, counting());
 
-        const who = caller("acme");
-        const product = await listed(who);
+        const product = await listed(api, who);
 
         const [held] = await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: who }),
@@ -161,24 +142,6 @@ describe("reserving a product", () =>
     });
 });
 
-describe("a hold whose moment has passed", () =>
-{
-    test("is not counted as reserved, swept or not", async () =>
-    {
-        api = await serving({ holdSeconds: 600 }, () => clock);
-
-        const who = caller("acme");
-
-        await reserved(who);
-
-        clock += 601_000;
-
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-
-        expect((seen.body as { reserved: number }).reserved).toBe(0);
-    });
-});
-
 describe("a card the bank refused", () =>
 {
     test("does not put back a hold the sweep already let go of", async () =>
@@ -190,17 +153,13 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
-        // Read from the row itself: what a shop is shown hides an expired hold,
-        // which would hide a row left saying paid.
-        const inside = api.kernel.context("orders", who) as unknown as Inside;
-        const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
-
-        expect(row?.status).toBe("expired");
+        // The row itself: what a shop is shown hides an expired hold, which
+        // would hide a row left saying paid.
+        expect(await status(id)).toBe("expired");
     });
 
     test("and leaves nothing marked paid that nobody was charged for", async () =>
@@ -212,13 +171,12 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+        const answer = await seen();
+        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
 
         expect(row?.status).toBe("reserved");
     });
@@ -230,8 +188,7 @@ describe("what a shop is shown", () =>
     {
         api = await serving({ holdSeconds: 600 }, () => clock);
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
         clock += 601_000;
 
@@ -247,9 +204,6 @@ describe("a slow refusal", () =>
 {
     test("does not rewind a payment somebody else completed", async () =>
     {
-        let hold: (() => void) | undefined;
-        const slow = new Promise<void>((keep) => { hold = keep; });
-
         let first = true;
 
         api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, async () =>
@@ -258,7 +212,7 @@ describe("a slow refusal", () =>
             {
                 first = false;
 
-                await slow;
+                await new Promise((keep) => setTimeout(keep, 20));
 
                 throw new Error("the bank said no, eventually");
             }
@@ -268,30 +222,21 @@ describe("a slow refusal", () =>
             return { paid: true, reference: "r" };
         });
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
+        const slowly = pay(id);
 
-        const pay = (): Promise<{ status: number }> => api.kernel.handle({
-            method: "POST", path: "/orders/:id/pay", input: { id }, caller: who,
-        });
+        await new Promise((keep) => setTimeout(keep, 5));
 
-        const slowly = pay();
-
-        await new Promise((settle) => setTimeout(settle, 5));
-
-        // The first payer is still waiting on the bank. Put the order back the
-        // way a compensation would, so a second payer can win it.
+        // The first payer is still waiting on the bank, so put the order back
+        // the way its compensation would and let a second payer win it.
         const inside = api.kernel.context("orders", who) as unknown as Inside;
 
         await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));
 
-        const quickly = await pay();
+        const quickly = await pay(id);
 
-        hold?.();
         await slowly;
 
-        const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
-
-        expect([quickly.status, row?.status, charges]).toEqual([201, "paid", 1]);
+        expect([quickly.status, await status(id), charges]).toEqual([201, "paid", 1]);
     });
 });

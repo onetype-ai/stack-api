@@ -31,3 +31,38 @@ export function caller(
 {
     return calling(permissions, id, { shopId });
 }
+
+/** A product this shop sells, listed and ready to be ordered. */
+export async function listed(api: Serving, who = caller(), cents = 2500): Promise<string>
+{
+    const made = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `P ${crypto.randomUUID()}`, cents },
+        caller: who,
+    });
+
+    const product = made.body as { id: string };
+
+    await api.kernel.handle({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        input: { id: product.id, status: "listed" },
+        caller: who,
+    });
+
+    return product.id;
+}
+
+/** One of those, held for the caller. */
+export async function reserved(api: Serving, who = caller()): Promise<string>
+{
+    const held = await api.kernel.handle({
+        method: "POST",
+        path: "/orders",
+        input: { productId: await listed(api, who) },
+        caller: who,
+    });
+
+    return (held.body as { id: string }).id;
+}

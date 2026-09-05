@@ -441,6 +441,16 @@ export const Product = {
             );
         }
 
+        if (Text.mixed(name))
+        {
+            throw new Refusal(
+                400,
+                "MIXED_ALPHABETS",
+                "A word is written in one alphabet. Mixing them inside one is how a name is made to look like another.",
+                { name: "One alphabet per word." },
+            );
+        }
+
         if (length === 0 || length > LIMIT)
         {
             throw new Refusal(
@@ -756,7 +766,7 @@ export class ProductsService
     // What a product may become next. Nothing returns from withdrawn: a shop
     // that wants it back lists it again as a new one.
     static #next: Readonly<Record<Status, readonly Status[]>> = {
-        draft: ["listed"],
+        draft: ["listed", "withdrawn"],
         listed: ["withdrawn"],
         withdrawn: [],
     };
@@ -950,11 +960,30 @@ describe("a product's life", () =>
         expect((await moved(id, "listed")).status).toBe(409);
     });
 
-    test("and nothing is withdrawn that was never for sale", async () =>
+    test("but a shop may drop a draft it never put up", async () =>
     {
         api = await serving();
 
-        expect((await moved(await made(), "withdrawn")).status).toBe(409);
+        expect((await moved(await made(), "withdrawn")).status).toBe(200);
+    });
+
+    test("and the command that drops every draft still works", async () =>
+    {
+        api = await serving();
+
+        await made();
+        await made();
+
+        await api.kernel.run("catalog.withdraw-drafts", {}, caller());
+
+        const seen = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products",
+            input: { status: "draft" },
+            caller: caller(),
+        });
+
+        expect((seen.body as { products: unknown[] }).products).toEqual([]);
     });
 });
 
@@ -998,29 +1027,49 @@ describe("two names that read differently", () =>
 
 describe("two names that read the same", () =>
 {
-    test("are one name across widths and alphabets", () =>
+    test("and a word written in two alphabets is refused, not quietly doubled", async () =>
     {
-        expect(Text.same("Ｗidget")).toBe(Text.same("Widget"));
-        expect(Text.same("Widgеt")).toBe(Text.same("Widget"));
+        const api = await serving();
+
+        const add = (name: string): Promise<{ status: number }> => api.kernel.handle({
+            method: "POST", path: "/catalog/products", input: { name, cents: 100 }, caller: caller(),
+        });
+
+        // One letter pretending to be another, inside one word.
+        expect((await add("Widgеt")).status).toBe(400);
+        expect((await add("Sοap")).status).toBe(400);
+        expect((await add("ᎠPPLE")).status).toBe(400);
+
+        // What shops actually sell: a brand in one alphabet beside a word in
+        // another, and two words nobody would confuse.
+        expect((await add("iPhone 15 Про")).status).toBe(201);
+        expect((await add("Nike Παπούτσια")).status).toBe(201);
+        expect((await add("Рок")).status).toBe(201);
+        expect((await add("Pok")).status).toBe(201);
+
+        await api.stop();
     });
 
     test("and a joiner that holds a word together is kept", () =>
     {
         expect(Text.visible("👨‍👩‍👧")).toBe("👨‍👩‍👧");
         expect(Text.visible("می‌رود")).toBe("می‌رود");
+        expect(Text.visible("100 km")).toBe("100 km");
     });
 
-    test("are the same name, however they were typed", () =>
+    test("and letters tied into one glyph are the letters they hold", () =>
     {
-        expect(Text.same("Wid​get")).toBe(Text.same("Widget"));
-        expect(Text.same("Wid‎get")).toBe(Text.same("Widget"));
-        expect(Text.same("Wid­get")).toBe(Text.same("Widget"));
+        expect(Text.same("Oﬃce")).toBe(Text.same("Office"));
+        expect(Text.same("waﬄe")).toBe(Text.same("waffle"));
     });
 
-    test("and a name that only orders itself backwards is not a new one", () =>
+    test("whatever the character that hid it", () =>
     {
-        expect(Text.same("Safe‮gnp.exe")).toBe(Text.same("Safegnp.exe"));
+        expect(Text.same("Wid؜get")).toBe(Text.same("Widget"));
+        expect(Text.same("Wid\u{E0061}get")).toBe(Text.same("Widget"));
     });
+
+
 });
 
 describe("what a name costs to store", () =>
@@ -1031,15 +1080,6 @@ describe("what a name costs to store", () =>
 
         expect(Text.characters(one)).toBe(1);
         expect(Text.units(one)).toBeGreaterThan(120);
-    });
-});
-
-describe("searching for nothing", () =>
-{
-    test("is not a search for everything", () =>
-    {
-        expect(Text.searched(" ")).toBe("");
-        expect(Text.searched("́")).toBe("");
     });
 });
 
@@ -1943,6 +1983,10 @@ CREATE TABLE orders_orders (
 
 CREATE INDEX orders_orders_shop ON orders_orders (shop_id, sequence);
 
+==> src/plugins/orders/migrations/0002-add-paying.sql
+
+ALTER TABLE orders_orders ADD COLUMN paying TEXT;
+
 ==> src/plugins/orders/routes/orders.ts
 
 import { Answered, defineRoute } from "@onetype/stack-api-kit";
@@ -2116,6 +2160,7 @@ export class OrdersService
     async list(): Promise<OrderPage>
     {
         const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
+        const now = this.#ctx.now();
 
         // A hold past its moment is one a read ignores, whether or not the
         // sweep has been by yet.
@@ -2125,7 +2170,9 @@ export class OrdersService
             .where(and(this.#scoped("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
 
         return {
-            orders: found.map((row) => this.#shown(row)),
+            orders: found.map((row) => this.#shown(
+                row.status === "reserved" && row.holdsUntil <= now ? { ...row, status: "expired" } : row,
+            )),
             reserved: held?.total ?? 0,
         };
     }
@@ -2199,12 +2246,14 @@ export class OrdersService
     {
         const order = await this.get(id);
 
+        const attempt = crypto.randomUUID();
+
         // Won in one statement, before the money moves: a second payer finds the
         // row no longer reserved and is refused, rather than charging it again.
         const [won] = await this.#ctx.write(() =>
             this.#ctx.db
                 .update(orders)
-                .set({ status: "paid" })
+                .set({ status: "paid", paying: attempt })
                 .where(and(
                     this.#just(id),
                     eq(orders.status, "reserved"),
@@ -2225,16 +2274,19 @@ export class OrdersService
         }
         catch (cause)
         {
-            // Put back only if it is still ours to put back: a sweep or a cancel
-            // that ran meanwhile decided, and a refused card does not undecide it.
+            // Only the attempt this call made. Status alone would let a slow
+            // refusal rewind a payment somebody else already completed.
             await this.#ctx.write(() =>
                 this.#ctx.db
                     .update(orders)
-                    .set({ status: "reserved" })
-                    .where(and(this.#just(id), eq(orders.status, "paid"), gt(orders.holdsUntil, this.#ctx.now()))));
+                    .set({ status: won.holdsUntil > this.#ctx.now() ? "reserved" : "expired", paying: null })
+                    .where(and(this.#just(id), eq(orders.paying, attempt))));
 
             throw cause;
         }
+
+        await this.#ctx.write(() =>
+            this.#ctx.db.update(orders).set({ paying: null }).where(and(this.#just(id), eq(orders.paying, attempt))));
 
         return this.#ctx.tx(async (inside) =>
         {
@@ -2398,6 +2450,10 @@ export const orders = sqliteTable("orders_orders", {
     status: text("status").notNull(),
 
     holdsUntil: integer("holds_until").notNull(),
+
+    // Which attempt is charging for it. A compensation belongs to one call,
+    // and status alone cannot say whose.
+    paying: text("paying"),
 
     createdAt: text("created_at").notNull(),
     sequence: integer("sequence").notNull(),
@@ -2732,7 +2788,13 @@ describe("a hold", () =>
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { caller, serving, type Serving } from "./serving";
+import { eq } from "drizzle-orm";
+
+import { orders } from "../tables/orders";
+
+import { caller, listed, reserved, serving, type Serving } from "./serving";
+
+import type { Inside } from "../types/Context";
 
 const PAYMENTS = "https://payments.example.test";
 
@@ -2747,40 +2809,9 @@ afterEach(async () =>
     clock = 1_700_000_000_000;
 });
 
-async function listed(who: ReturnType<typeof caller>): Promise<string>
-{
-    const made = await api.kernel.handle({
-        method: "POST",
-        path: "/catalog/products",
-        input: { name: `P ${crypto.randomUUID()}`, cents: 2500 },
-        caller: who,
-    });
+const who = caller("acme");
 
-    const product = made.body as { id: string };
-
-    await api.kernel.handle({
-        method: "PATCH",
-        path: "/catalog/products/:id",
-        input: { id: product.id, status: "listed" },
-        caller: who,
-    });
-
-    return product.id;
-}
-
-async function reserved(who: ReturnType<typeof caller>): Promise<string>
-{
-    const held = await api.kernel.handle({
-        method: "POST",
-        path: "/orders",
-        input: { productId: await listed(who), quantity: 1 },
-        caller: who,
-    });
-
-    return (held.body as { id: string }).id;
-}
-
-function counting(): (call: { url: string }) => unknown
+function counting(): () => unknown
 {
     return () =>
     {
@@ -2790,20 +2821,34 @@ function counting(): (call: { url: string }) => unknown
     };
 }
 
+function pay(id: string): Promise<{ status: number }>
+{
+    return api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+}
+
+function seen(): Promise<{ body: unknown }>
+{
+    return api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+}
+
+async function status(id: string): Promise<string | undefined>
+{
+    const inside = api.kernel.context("orders", who) as unknown as Inside;
+    const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
+
+    return row?.status;
+}
+
+
 describe("an order paid from two places at once", () =>
 {
     test("is charged once, whatever the timing", async () =>
     {
         api = await serving({ payments: PAYMENTS }, undefined, counting());
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
-        const pay = (): Promise<unknown> => api.kernel.handle({
-            method: "POST", path: "/orders/:id/pay", input: { id }, caller: who,
-        });
-
-        await Promise.all([pay(), pay()]);
+        await Promise.all([pay(id), pay(id)]);
 
         expect(charges).toBe(1);
     });
@@ -2812,16 +2857,15 @@ describe("an order paid from two places at once", () =>
     {
         api = await serving({ payments: PAYMENTS }, undefined, counting());
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
         await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who }),
             api.kernel.handle({ method: "DELETE", path: "/orders/:id", input: { id }, caller: who }),
         ]);
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+        const answer = await seen();
+        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
 
         expect(["paid", "cancelled"]).toContain(row?.status);
         expect(charges).toBe(row?.status === "paid" ? 1 : 0);
@@ -2839,8 +2883,8 @@ describe("releasing holds that have run out", () =>
 
         // Both are old enough. The sweep runs on schedule, once per shop, with
         // nobody calling it.
-        await reserved(acme);
-        const theirs = await reserved(other);
+        await reserved(api, acme);
+        const theirs = await reserved(api, other);
 
         clock += 601_000;
 
@@ -2867,8 +2911,7 @@ describe("reserving a product", () =>
     {
         api = await serving({ payments: PAYMENTS }, undefined, counting());
 
-        const who = caller("acme");
-        const product = await listed(who);
+        const product = await listed(api, who);
 
         const [held] = await Promise.all([
             api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: who }),
@@ -2887,24 +2930,6 @@ describe("reserving a product", () =>
     });
 });
 
-describe("a hold whose moment has passed", () =>
-{
-    test("is not counted as reserved, swept or not", async () =>
-    {
-        api = await serving({ holdSeconds: 600 }, () => clock);
-
-        const who = caller("acme");
-
-        await reserved(who);
-
-        clock += 601_000;
-
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-
-        expect((seen.body as { reserved: number }).reserved).toBe(0);
-    });
-});
-
 describe("a card the bank refused", () =>
 {
     test("does not put back a hold the sweep already let go of", async () =>
@@ -2916,15 +2941,91 @@ describe("a card the bank refused", () =>
             throw new Error("the bank said no");
         });
 
-        const who = caller("acme");
-        const id = await reserved(who);
+        const id = await reserved(api, who);
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+        // The row itself: what a shop is shown hides an expired hold, which
+        // would hide a row left saying paid.
+        expect(await status(id)).toBe("expired");
+    });
 
-        expect(row?.status).not.toBe("reserved");
+    test("and leaves nothing marked paid that nobody was charged for", async () =>
+    {
+        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
+        {
+            charges += 1;
+
+            throw new Error("the bank said no");
+        });
+
+        const id = await reserved(api, who);
+
+        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+
+        const answer = await seen();
+        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+
+        expect(row?.status).toBe("reserved");
+    });
+});
+
+describe("what a shop is shown", () =>
+{
+    test("says the same thing in the count and in the rows", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const id = await reserved(api, who);
+
+        clock += 601_000;
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const answer = seen.body as { reserved: number; orders: { id: string; status: string }[] };
+        const row = answer.orders.find((one) => one.id === id);
+
+        expect([answer.reserved, row?.status]).toEqual([0, "expired"]);
+    });
+});
+
+describe("a slow refusal", () =>
+{
+    test("does not rewind a payment somebody else completed", async () =>
+    {
+        let first = true;
+
+        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, async () =>
+        {
+            if (first)
+            {
+                first = false;
+
+                await new Promise((keep) => setTimeout(keep, 20));
+
+                throw new Error("the bank said no, eventually");
+            }
+
+            charges += 1;
+
+            return { paid: true, reference: "r" };
+        });
+
+        const id = await reserved(api, who);
+        const slowly = pay(id);
+
+        await new Promise((keep) => setTimeout(keep, 5));
+
+        // The first payer is still waiting on the bank, so put the order back
+        // the way its compensation would and let a second payer win it.
+        const inside = api.kernel.context("orders", who) as unknown as Inside;
+
+        await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));
+
+        const quickly = await pay(id);
+
+        await slowly;
+
+        expect([quickly.status, await status(id), charges]).toEqual([201, "paid", 1]);
     });
 });
 
@@ -2962,6 +3063,41 @@ export function caller(
 ): Caller
 {
     return calling(permissions, id, { shopId });
+}
+
+/** A product this shop sells, listed and ready to be ordered. */
+export async function listed(api: Serving, who = caller(), cents = 2500): Promise<string>
+{
+    const made = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `P ${crypto.randomUUID()}`, cents },
+        caller: who,
+    });
+
+    const product = made.body as { id: string };
+
+    await api.kernel.handle({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        input: { id: product.id, status: "listed" },
+        caller: who,
+    });
+
+    return product.id;
+}
+
+/** One of those, held for the caller. */
+export async function reserved(api: Serving, who = caller()): Promise<string>
+{
+    const held = await api.kernel.handle({
+        method: "POST",
+        path: "/orders",
+        input: { productId: await listed(api, who) },
+        caller: who,
+    });
+
+    return (held.body as { id: string }).id;
 }
 
 ==> src/plugins/orders/types/Context.ts

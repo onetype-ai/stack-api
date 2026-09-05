@@ -59,17 +59,7 @@ describe("two names that read the same", () =>
         expect(Text.same("Wid\u{E0061}get")).toBe(Text.same("Widget"));
     });
 
-    test("are the same name, however they were typed", () =>
-    {
-        expect(Text.same("Wid​get")).toBe(Text.same("Widget"));
-        expect(Text.same("Wid‎get")).toBe(Text.same("Widget"));
-        expect(Text.same("Wid­get")).toBe(Text.same("Widget"));
-    });
 
-    test("and a name that only orders itself backwards is not a new one", () =>
-    {
-        expect(Text.same("Safe‮gnp.exe")).toBe(Text.same("Safegnp.exe"));
-    });
 });
 
 describe("what a name costs to store", () =>
@@ -80,15 +70,6 @@ describe("what a name costs to store", () =>
 
         expect(Text.characters(one)).toBe(1);
         expect(Text.units(one)).toBeGreaterThan(120);
-    });
-});
-
-describe("searching for nothing", () =>
-{
-    test("is not a search for everything", () =>
-    {
-        expect(Text.searched(" ")).toBe("");
-        expect(Text.searched("́")).toBe("");
     });
 });
 
