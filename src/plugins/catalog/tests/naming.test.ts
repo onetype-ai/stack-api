@@ -42,6 +42,12 @@ describe("two names that read the same", () =>
         expect(Text.visible("100 km")).toBe("100 km");
     });
 
+    test("and letters tied into one glyph are the letters they hold", () =>
+    {
+        expect(Text.same("Oﬃce")).toBe(Text.same("Office"));
+        expect(Text.same("waﬄe")).toBe(Text.same("waffle"));
+    });
+
     test("whatever the character that hid it", () =>
     {
         expect(Text.same("Wid؜get")).toBe(Text.same("Widget"));

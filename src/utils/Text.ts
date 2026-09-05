@@ -15,11 +15,18 @@ class TextUtil
     }
 
     // NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name, and a shop
-    // sells both.
+    // sells both. Ligatures live in their own range, so they fold on their own.
     same(raw: string): string
     {
-        return this.#flattened(raw).normalize("NFC");
+        return this.#flattened(raw)
+            .replace(/[\uFB00-\uFB06]/gu, (one) => TextUtil.#tied.get(one) ?? one)
+            .normalize("NFC");
     }
+
+    static #tied = new Map(Object.entries({
+        "\uFB00": "ff", "\uFB01": "fi", "\uFB02": "fl",
+        "\uFB03": "ffi", "\uFB04": "ffl", "\uFB05": "st", "\uFB06": "st",
+    }));
 
     // A letter that draws like another is only useful beside letters from a
     // different script. Folding them together would make "Рок" and "Pok" one
