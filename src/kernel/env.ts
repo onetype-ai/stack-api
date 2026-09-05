@@ -37,7 +37,8 @@ export const Env = {
             return fallback;
         }
 
-        const parsed = Number(value);
+        // Number("  ") is 0, and a stray space in a .env would read as one.
+        const parsed = value.trim() === "" ? Number.NaN : Number(value);
 
         if (!Number.isInteger(parsed) || parsed < 0)
         {
@@ -47,9 +48,11 @@ export const Env = {
         return parsed;
     },
 
+    // Set and empty means nothing is allowed, which is the safe answer and the
+    // natural way to write it. Only text() treats an empty value as a mistake.
     list: (name: string): readonly string[] =>
     {
-        return (Env.text(name, "") ?? "")
+        return (process.env[name] ?? "")
             .split(",")
             .map((one) => one.trim())
             .filter(Boolean);

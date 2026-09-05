@@ -40,23 +40,33 @@ describe("what a watch says about listeners that failed", () =>
 
     test("is everything it has not read before", () =>
     {
-        const { fresh, seen } = Api.unseen([broke(10), broke(20)], 0);
+        const { fresh, read } = Api.unseen([broke(10), broke(20)], 0);
 
         expect(fresh).toHaveLength(2);
-        expect(seen).toBe(20);
+        expect(read).toBe(2);
     });
 
     test("and never the same one twice", () =>
     {
         const held = [broke(10), broke(20)];
 
-        expect(Api.unseen(held, Api.unseen(held, 0).seen).fresh).toEqual([]);
+        expect(Api.unseen(held, Api.unseen(held, 0).read).fresh).toEqual([]);
+    });
+
+    // Stamps are milliseconds, and a burst of failures shares one. Comparing
+    // them loses every failure that lands on the moment already read.
+    test("including one that failed in the same millisecond as the last", () =>
+    {
+        const { read } = Api.unseen([broke(10)], 0);
+        const { fresh } = Api.unseen([broke(10), broke(10)], read);
+
+        expect(fresh).toHaveLength(1);
     });
 
     test("but does notice one that fails again after that", () =>
     {
-        const { seen } = Api.unseen([broke(10)], 0);
-        const { fresh } = Api.unseen([broke(10), broke(30)], seen);
+        const { read } = Api.unseen([broke(10)], 0);
+        const { fresh } = Api.unseen([broke(10), broke(30)], read);
 
         expect(fresh).toHaveLength(1);
         expect(fresh[0]?.at).toBe(30);
@@ -64,6 +74,6 @@ describe("what a watch says about listeners that failed", () =>
 
     test("and says nothing at all when nothing broke", () =>
     {
-        expect(Api.unseen([], 0)).toEqual({ fresh: [], seen: 0 });
+        expect(Api.unseen([], 0)).toEqual({ fresh: [], read: 0 });
     });
 });

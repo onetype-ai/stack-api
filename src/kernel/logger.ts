@@ -6,16 +6,39 @@ type Write = (level: Level, line: string, about?: Readonly<Record<string, unknow
 export const Log = {
     order: { debug: 0, info: 1, warn: 2, error: 3 } as Readonly<Record<Level, number>>,
 
+    // The frame is written last: what a caller passes cannot rename the time,
+    // the level or the line, and an Error keeps its message instead of
+    // stringifying to {}.
     line: (level: Level, line: string, about?: Readonly<Record<string, unknown>>): string =>
     {
-        return `${JSON.stringify({ at: new Date().toISOString(), level, line, ...about })}\n`;
+        const said = { ...about, at: new Date().toISOString(), level, line };
+
+        try
+        {
+            return `${JSON.stringify(said, Log.readable)}\n`;
+        }
+        catch
+        {
+            return `${JSON.stringify({ at: said.at, level, line, about: "unreadable" })}\n`;
+        }
+    },
+
+    readable: (_key: string, value: unknown): unknown =>
+    {
+        if (value instanceof Error)
+        {
+            return { message: value.message, stack: value.stack };
+        }
+
+        return typeof value === "bigint" ? value.toString() : value;
     },
 
     at: (level: Level = "info"): Logger =>
     {
         const write: Write = (at, line, about) =>
         {
-            if (Log.order[at] >= Log.order[level])
+            // An unknown level is NaN on both sides, which silences every line.
+            if ((Log.order[at] ?? 0) >= (Log.order[level] ?? 0))
             {
                 process.stdout.write(Log.line(at, line, about));
             }
