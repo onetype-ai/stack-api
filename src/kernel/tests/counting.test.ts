@@ -48,13 +48,12 @@ describe("what a watch says about listeners that failed", () =>
 
     test("and never the same one twice", () =>
     {
-        const held = [broke(10), broke(20)];
+        const failures = [broke(10), broke(20)];
 
-        expect(Api.unseen(held, Api.unseen(held, 0).read).fresh).toEqual([]);
+        expect(Api.unseen(failures, Api.unseen(failures, 0).read).fresh).toEqual([]);
     });
 
-    // Stamps are milliseconds, and a burst of failures shares one. Comparing
-    // them loses every failure that lands on the moment already read.
+    // A burst of failures shares a millisecond, so comparing them loses some.
     test("including one that failed in the same millisecond as the last", () =>
     {
         const { read } = Api.unseen([broke(10)], 0);

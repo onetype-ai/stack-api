@@ -30,8 +30,7 @@ describe("two names that read the same", () =>
         expect((await add("Sοap")).status).toBe(400);
         expect((await add("ᎠPPLE")).status).toBe(400);
 
-        // What shops actually sell: a brand in one alphabet beside a word in
-        // another, and two words nobody would confuse.
+        // What shops sell: a brand in one alphabet beside a word in another.
         expect((await add("iPhone 15 Про")).status).toBe(201);
         expect((await add("Nike Παπούτσια")).status).toBe(201);
         expect((await add("Рок")).status).toBe(201);
@@ -66,10 +65,10 @@ describe("what a name costs to store", () =>
 {
     test("is counted, and not only what a reader sees", () =>
     {
-        const one = `a${"́".repeat(3000)}`;
+        const marked = `a${"́".repeat(3000)}`;
 
-        expect(Text.characters(one)).toBe(1);
-        expect(Text.units(one)).toBeGreaterThan(120);
+        expect(Text.characters(marked)).toBe(1);
+        expect(Text.units(marked)).toBeGreaterThan(120);
     });
 });
 

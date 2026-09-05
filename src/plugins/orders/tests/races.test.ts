@@ -77,7 +77,7 @@ describe("an order paid from two places at once", () =>
         ]);
 
         const answer = await seen();
-        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === id);
 
         expect(["paid", "cancelled"]).toContain(row?.status);
         expect(charges).toBe(row?.status === "paid" ? 1 : 0);
@@ -93,8 +93,7 @@ describe("releasing holds that have run out", () =>
         const acme = caller("acme");
         const other = caller("other", undefined, "22222222-2222-4222-8222-222222222222");
 
-        // Both are old enough. The sweep runs on schedule, once per shop, with
-        // nobody calling it.
+        // Both are old enough, and the sweep runs on schedule with nobody calling.
         await reserved(api, acme);
         const theirs = await reserved(api, other);
 
@@ -102,8 +101,8 @@ describe("releasing holds that have run out", () =>
 
         await api.due();
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
-        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === theirs);
+        const shown = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
+        const row = (shown.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === theirs);
 
         expect(row?.status).toBe("expired");
     });
@@ -157,8 +156,7 @@ describe("a card the bank refused", () =>
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
-        // The row itself: what a shop is shown hides an expired hold, which
-        // would hide a row left saying paid.
+        // The row itself: a shop is shown nothing of an expired hold.
         expect(await status(id)).toBe("expired");
     });
 
@@ -176,7 +174,7 @@ describe("a card the bank refused", () =>
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
         const answer = await seen();
-        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+        const row = (answer.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === id);
 
         expect(row?.status).toBe("reserved");
     });
@@ -192,9 +190,9 @@ describe("what a shop is shown", () =>
 
         clock += 601_000;
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
-        const answer = seen.body as { reserved: number; orders: { id: string; status: string }[] };
-        const row = answer.orders.find((one) => one.id === id);
+        const shown = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const answer = shown.body as { reserved: number; orders: { id: string; status: string }[] };
+        const row = answer.orders.find((order) => order.id === id);
 
         expect([answer.reserved, row?.status]).toEqual([0, "expired"]);
     });
@@ -227,8 +225,7 @@ describe("a slow refusal", () =>
 
         await new Promise((keep) => setTimeout(keep, 5));
 
-        // The first payer is still waiting on the bank, so put the order back
-        // the way its compensation would and let a second payer win it.
+        // The first payer still waits, so put it back and let a second win it.
         const inside = api.kernel.context("orders", who) as unknown as Inside;
 
         await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));

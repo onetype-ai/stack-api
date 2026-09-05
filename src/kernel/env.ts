@@ -28,9 +28,7 @@ export const Env = {
         return value;
     },
 
-    // `least` is what the value means at its smallest. A port of 0 binds
-    // whatever is free and a body limit of 0 refuses every write, so a number
-    // that is legal to type is not always one that is legal to mean.
+    // A port of 0 binds anything free; a body limit of 0 refuses every write.
     number: (name: string, fallback: number, least = 0, most = Number.MAX_SAFE_INTEGER): number =>
     {
         const value = Env.text(name);
@@ -51,8 +49,7 @@ export const Env = {
         return parsed;
     },
 
-    // Set and empty means nothing is allowed, which is the safe answer and the
-    // natural way to write it. Only text() treats an empty value as a mistake.
+    // Set and empty means nothing is allowed, which is the safe answer.
     list: (name: string): readonly string[] =>
     {
         return (process.env[name] ?? "")

@@ -6,9 +6,7 @@ type Write = (level: Level, line: string, about?: Readonly<Record<string, unknow
 export const Log = {
     order: { debug: 0, info: 1, warn: 2, error: 3 } as Readonly<Record<Level, number>>,
 
-    // The frame is written last: what a caller passes cannot rename the time,
-    // the level or the line, and an Error keeps its message instead of
-    // stringifying to {}.
+    // Written last, so a caller cannot rename the time, level or line.
     line: (level: Level, line: string, about?: Readonly<Record<string, unknown>>): string =>
     {
         const written = { ...about, at: new Date().toISOString(), level, line };

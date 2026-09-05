@@ -144,7 +144,7 @@ describe("pages", () =>
 
             const body = answer.body as { products: { name: string }[]; after?: string };
 
-            seen.push(...body.products.map((one) => one.name));
+            seen.push(...body.products.map((product) => product.name));
             after = body.after;
 
             if (after === undefined)

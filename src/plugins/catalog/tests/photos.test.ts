@@ -15,7 +15,7 @@ afterEach(async () =>
     await api.stop();
 });
 
-function held(): { photos: { add: (id: string, url: string) => Promise<unknown>; of: (id: string) => Promise<unknown[]> } }
+function catalog(): { photos: { add: (id: string, url: string) => Promise<unknown>; of: (id: string) => Promise<unknown[]> } }
 {
     return api.kernel.context("catalog", caller()).services as never;
 }
@@ -40,8 +40,8 @@ describe("a photo", () =>
 
         const id = await made();
 
-        await expect(held().photos.add(id, "javascript:alert(1)")).rejects.toThrow();
-        await expect(held().photos.add(id, "not a url")).rejects.toThrow();
+        await expect(catalog().photos.add(id, "javascript:alert(1)")).rejects.toThrow();
+        await expect(catalog().photos.add(id, "not a url")).rejects.toThrow();
     });
 
     test("and a product carries only so many", async () =>
@@ -52,10 +52,10 @@ describe("a photo", () =>
 
         for (let at = 0; at < 50; at += 1)
         {
-            await held().photos.add(id, `https://pictures.example.test/${String(at)}.jpg`);
+            await catalog().photos.add(id, `https://pictures.example.test/${String(at)}.jpg`);
         }
 
-        await expect(held().photos.add(id, "https://pictures.example.test/51.jpg")).rejects.toThrow();
+        await expect(catalog().photos.add(id, "https://pictures.example.test/51.jpg")).rejects.toThrow();
     });
 
     test("and goes when the product it belongs to goes", async () =>
@@ -64,11 +64,10 @@ describe("a photo", () =>
 
         const id = await made();
 
-        await held().photos.add(id, "https://pictures.example.test/one.jpg");
+        await catalog().photos.add(id, "https://pictures.example.test/one.jpg");
         await api.kernel.handle({ method: "DELETE", path: "/catalog/products/:id", input: { id }, caller: caller() });
 
-        // Asked for by the dead id: a row left behind is still reachable, and
-        // is inherited by whatever takes that id next.
+        // The dead id: a row left behind is inherited by whatever takes it next.
         const inside = api.kernel.context("catalog", caller()) as unknown as Inside;
         const left = await inside.db.select().from(photos).where(eq(photos.productId, id));
 

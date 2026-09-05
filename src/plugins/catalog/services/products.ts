@@ -61,8 +61,7 @@ export class ProductsService
     {
         const looking = Text.searched(text);
 
-        // Everything holds "", so a search that folded away would answer with
-        // the whole shop rather than with nothing.
+        // Everything holds "", so a folded-away search would answer with the shop.
         if (looking === "")
         {
             return [];
@@ -94,9 +93,7 @@ export class ProductsService
 
         return this.#ctx.tx(async (inside) =>
         {
-            // Counted again inside the transaction. The hook counts before it
-            // opens, so ten arriving at once all read the same number and all
-            // pass a limit only one of them should.
+            // Counted inside: the hook counts before it opens, so ten at once all pass.
             const [counted] = await inside.db
                 .select({ many: count() })
                 .from(products)
@@ -126,8 +123,7 @@ export class ProductsService
                 createdAt: new Date(this.#ctx.now()).toISOString(),
                 sequence: (highest?.at ?? 0) + 1,
 
-                // Written from the caller, never from the input: without this
-                // a caller could store a row into another shop.
+                // From the caller, never the input: otherwise a row lands in another shop.
                 ...this.#ctx.stamped("products"),
             } as Row;
 
@@ -146,8 +142,7 @@ export class ProductsService
         });
     }
 
-    // What a product may become next. Nothing returns from withdrawn: a shop
-    // that wants it back lists it again as a new one.
+    // Nothing returns from withdrawn; a shop lists it again as a new one.
     static #next: Readonly<Record<Status, readonly Status[]>> = {
         draft: ["listed", "withdrawn"],
         listed: ["withdrawn"],
@@ -209,8 +204,7 @@ export class ProductsService
                 throw this.#missing();
             }
 
-            // In the same transaction as the product. Left behind, they are
-            // reachable by a dead id, and inherited by the next row to use it.
+            // With the product: left behind, they are inherited by the next id.
             await inside.db.delete(photos).where(eq(photos.productId, id));
 
             inside.events.emit("catalog.product.removed", { id, shopId: removed.shopId });

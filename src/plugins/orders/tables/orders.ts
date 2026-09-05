@@ -9,8 +9,7 @@ export const orders = sqliteTable("orders_orders", {
 
     holdsUntil: integer("holds_until").notNull(),
 
-    // Which attempt is charging for it. A compensation belongs to one call,
-    // and status alone cannot say whose.
+    // Which attempt is charging: status cannot say whose.
     paying: text("paying"),
 
     createdAt: text("created_at").notNull(),

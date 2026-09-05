@@ -67,8 +67,7 @@ export class OrdersService
 
         return this.#ctx.tx(async (inside) =>
         {
-            // Asked again inside the transaction: one withdrawn in the gap
-            // would otherwise be reserved anyway, and then paid for.
+            // Asked again inside: one withdrawn in the gap would be reserved anyway.
             const current = await Catalog.get(inside, productId);
 
             if (current.status !== "listed")
@@ -94,8 +93,7 @@ export class OrdersService
 
             await inside.db.insert(orders).values(row);
 
-            // Inside the transaction, so a rolled-back reservation schedules
-            // no release for an order that never existed.
+            // Inside, so a rolled-back reservation schedules no release.
             inside.commands.later("orders.release-holds", { shopId: row.shopId }, this.#ctx.config.holdSeconds);
 
             this.#ctx.owned<Reserving>()?.took();
@@ -112,8 +110,7 @@ export class OrdersService
 
         const attempt = crypto.randomUUID();
 
-        // Claimed in one statement, before the money moves: a second payer
-        // finds it no longer reserved and is refused.
+        // Claimed in one statement before the money moves.
         const [claimed] = await this.#ctx.write(() =>
             this.#ctx.db
                 .update(orders)
@@ -138,8 +135,7 @@ export class OrdersService
         }
         catch (cause)
         {
-            // Only this attempt: status alone would let a slow refusal rewind
-            // a payment somebody else completed.
+            // Only this attempt: status cannot say which call set it.
             await this.#ctx.write(() =>
                 this.#ctx.db
                     .update(orders)
@@ -236,8 +232,7 @@ export class OrdersService
             method: "POST",
             url: `${url}/v1/charges`,
 
-            // Ours and stable across attempts, so a retry asks about the
-            // charge they hold rather than taking the money twice.
+            // Ours and stable, so a retry asks about the charge they already hold.
             body: { cents, reference },
         });
 

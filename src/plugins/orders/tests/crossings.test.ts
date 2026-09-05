@@ -163,9 +163,9 @@ describe("the partner it dials", () =>
 
         expect(answer.status).toBe(402);
 
-        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
+        const shown = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
 
-        expect(seen.body).toMatchObject({ reserved: 1 });
+        expect(shown.body).toMatchObject({ reserved: 1 });
     });
 });
 

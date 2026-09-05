@@ -8,8 +8,7 @@ class OrderingUtil
         }
         catch
         {
-            // A tag Intl cannot read is a bad request, not a broken server, and
-            // a list still has to come back in some order.
+            // A tag Intl cannot read is a bad request, not a broken server.
             return new Intl.Collator("en", { sensitivity: "variant" });
         }
     }

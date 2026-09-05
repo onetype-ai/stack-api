@@ -2,17 +2,17 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { Env } from "../env";
 
-const held = process.env.PROBE;
+const before = process.env.PROBE;
 
 afterEach(() =>
 {
-    if (held === undefined)
+    if (before === undefined)
     {
         delete process.env.PROBE;
         return;
     }
 
-    process.env.PROBE = held;
+    process.env.PROBE = before;
 });
 
 describe("a number read from the environment", () =>

@@ -25,8 +25,7 @@ export const Product = {
         const name = Text.visible(raw).normalize("NFC").trim().replace(/\s+/gu, " ");
         const length = Text.characters(name);
 
-        // Bounded twice: what a reader counts, and what storing it costs. One
-        // letter can carry three thousand marks and still read as one.
+        // Bounded twice: one letter can carry three thousand marks.
         if (Text.units(name) > LIMIT * 8)
         {
             throw new Refusal(

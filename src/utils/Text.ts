@@ -1,7 +1,6 @@
 class TextUtil
 {
-    // NFD lifts a mark above a letter; a stroke through one is its own
-    // character and has to be named.
+    // NFD lifts a mark above a letter; a stroke through one is its own.
     #stroked = new Map(Object.entries({
         ø: "o", đ: "d", ł: "l", ħ: "h", ŧ: "t", ƀ: "b", ɖ: "d", ƶ: "z", ə: "e",
         æ: "ae", œ: "oe", ß: "ss", þ: "th", ð: "d", ŋ: "n", ı: "i",
@@ -14,8 +13,7 @@ class TextUtil
             .replace(/[øđłħŧƀɖƶəæœßþðŋı]/gu, (letter) => this.#stroked.get(letter) ?? letter);
     }
 
-    // NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name, and a shop
-    // sells both. Ligatures live in their own range, so they fold on their own.
+    // NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name.
     same(raw: string): string
     {
         return this.#flattened(raw)
@@ -28,9 +26,7 @@ class TextUtil
         "\uFB03": "ffi", "\uFB04": "ffl", "\uFB05": "st", "\uFB06": "st",
     }));
 
-    // A word written in two alphabets is one letter pretending to be another:
-    // "Widgеt" with a Cyrillic e. A name may hold several alphabets, because
-    // "iPhone 15 Про" is what a Russian shop sells, but no single word may.
+    // One word, one alphabet: "Widgеt" hides a Cyrillic e. A name may mix.
     mixed(raw: string): boolean
     {
         return this.visible(raw).split(/\s+/u).some((word) =>
@@ -57,9 +53,7 @@ class TextUtil
 
     visible(raw: string): string
     {
-        // Every format character except the two joiners, which hold an emoji
-        // family together and separate Persian and Hindi words: removing those
-        // stores a different name than the one that was typed.
+        // Every format character but the joiners, which hold a word together.
         return raw.replace(/[\p{Cf}\u00AD\u200B\uFEFF]/gu, (mark) => (mark === "\u200C" || mark === "\u200D" ? mark : ""));
     }
 

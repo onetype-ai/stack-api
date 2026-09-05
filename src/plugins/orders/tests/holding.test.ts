@@ -49,7 +49,7 @@ async function statusOf(id: string, who = caller()): Promise<string>
     const answer = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
     const page = answer.body as { orders: { id: string; status: string }[] };
 
-    return page.orders.find((one) => one.id === id)?.status ?? "gone";
+    return page.orders.find((order) => order.id === id)?.status ?? "gone";
 }
 
 describe("a hold", () =>

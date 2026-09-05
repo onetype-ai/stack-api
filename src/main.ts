@@ -41,8 +41,7 @@ class ApiRunner
             log,
         });
 
-        // Node's own report is not a log line, so a collector reading them
-        // would miss the one message explaining the death.
+        // Node's own report is not a log line, so a collector would miss it.
         process.on("unhandledRejection", (cause: unknown) =>
         {
             log.error("a promise was rejected and nobody was listening", { cause });
@@ -122,8 +121,7 @@ class ApiRunner
 
             log.info("stopping", { signal });
 
-            // Not awaited: one held connection would keep the callback,
-            // and with it the outbox and the database, from ever running.
+            // Not awaited: one held connection would keep this from ever running.
             server.close();
 
             const forced = setTimeout(() =>
@@ -137,8 +135,7 @@ class ApiRunner
             api.stop().then(
                 async () =>
                 {
-                    // A reply may still be on its way out, and leaving before
-                    // it lands resets the socket mid-write.
+                    // A reply still on its way out would be reset mid-write.
                     await new Promise((settle) => setTimeout(settle, this.draining));
 
                     process.exit(0);

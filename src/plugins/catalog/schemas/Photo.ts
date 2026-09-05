@@ -3,8 +3,7 @@ import { z } from "zod";
 export const Photo = {
     schema: z.object({
         id: z.uuid(),
-        // z.url() takes "javascript:alert(1)": it is a url, and a browser runs
-        // it. A picture is fetched, so only the schemes that fetch one.
+        // z.url() takes "javascript:alert(1)", and a browser runs it.
         url: z.url().refine(
             (url) => url.startsWith("https://") || url.startsWith("http://"),
             "A photo is fetched over http or https.",

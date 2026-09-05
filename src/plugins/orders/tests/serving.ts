@@ -57,12 +57,12 @@ export async function listed(api: Serving, who = caller(), cents = 2500): Promis
 /** One of those, held for the caller. */
 export async function reserved(api: Serving, who = caller()): Promise<string>
 {
-    const held = await api.kernel.handle({
+    const made = await api.kernel.handle({
         method: "POST",
         path: "/orders",
         input: { productId: await listed(api, who) },
         caller: who,
     });
 
-    return (held.body as { id: string }).id;
+    return (made.body as { id: string }).id;
 }

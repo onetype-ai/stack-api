@@ -60,14 +60,14 @@ describe("a product's life", () =>
 
         await api.kernel.run("catalog.withdraw-drafts", {}, caller());
 
-        const seen = await api.kernel.handle({
+        const answer = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products",
             input: { status: "draft" },
             caller: caller(),
         });
 
-        expect((seen.body as { products: unknown[] }).products).toEqual([]);
+        expect((answer.body as { products: unknown[] }).products).toEqual([]);
     });
 });
 
@@ -86,6 +86,6 @@ describe("a shop's limit", () =>
 
         const answers = await Promise.all(adding);
 
-        expect(answers.filter((one) => one.status === 201)).toHaveLength(3);
+        expect(answers.filter((answer) => answer.status === 201)).toHaveLength(3);
     });
 });

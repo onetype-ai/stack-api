@@ -62,14 +62,14 @@ describe("what a shop may reach", () =>
 
         const mine = await added("acme", "Ours");
 
-        const seen = await api.kernel.handle({
+        const shown = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products/:id",
             input: { id: mine },
             caller: caller("other"),
         });
 
-        expect(seen.status).toBe(404);
+        expect(shown.status).toBe(404);
     });
 
     test("refuses a caller carrying no shop, rather than defaulting", async () =>

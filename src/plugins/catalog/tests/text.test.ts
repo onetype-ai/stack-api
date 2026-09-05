@@ -30,7 +30,7 @@ async function named(locale?: string): Promise<string[]>
         caller: caller(),
     });
 
-    return (answer.body as { products: { name: string }[] }).products.map((one) => one.name);
+    return (answer.body as { products: { name: string }[] }).products.map((product) => product.name);
 }
 
 describe("ordering", () =>
@@ -59,8 +59,7 @@ describe("ordering", () =>
         expect(await named("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
     });
 
-    // A tag naming its script gets that script's order. The stack does not
-    // pick one for a language that writes in two.
+    // A tag naming its script gets that order; the stack picks none.
     test("orders by the script the caller named", async () =>
     {
         api = await serving({ locale: "sr-Latn" });
@@ -123,8 +122,7 @@ describe("uniqueness", () =>
         expect(await add("Äpfel")).toBe(201);
     });
 
-    // A ligature is a different name, because the fold that would join it also
-    // joins "Model 2" with "Model ²", and a shop sells both of those.
+    // A ligature folds, but the fold that joins "Model 2" and "Model ²" does not.
     test("refuses a name hidden behind characters that draw nothing", async () =>
     {
         api = await serving();

@@ -6,16 +6,15 @@ import { Project } from "@onetype/stack-api-kit/testing";
 
 const LONGER = new Set(["#docs/reference.md"]);
 
-// The documents pack into docs.md, and a check that reads them has nothing to
-// read until they are unpacked. `pnpm unpack:docs` is what makes these run.
+// Skipped while the documents are packed. `pnpm unpack:docs` runs them.
 const unpacked = existsSync(join(process.cwd(), "#docs"));
 
 describe.skipIf(!unpacked)("the documents this project ships", () =>
 {
     test("hold to what they say about themselves", () =>
     {
-        const wrong = Project.checks().filter((one) =>
-            !(one.check === "oversized" && [...LONGER].some((named) => one.message.startsWith(named))));
+        const wrong = Project.checks().filter((problem) =>
+            !(problem.check === "oversized" && [...LONGER].some((named) => problem.message.startsWith(named))));
 
         expect(wrong).toEqual([]);
     });
@@ -23,7 +22,7 @@ describe.skipIf(!unpacked)("the documents this project ships", () =>
     test("and the reference stays a reference, not a book", () =>
     {
         const over = Project.checks({ limit: 3400 })
-            .filter((one) => one.check === "oversized");
+            .filter((problem) => problem.check === "oversized");
 
         expect(over).toEqual([]);
     });

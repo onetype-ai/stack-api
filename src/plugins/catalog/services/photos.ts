@@ -39,8 +39,7 @@ export class PhotosService
     {
         await this.#owned(productId);
 
-        // The schema says what a url is, and a service is reached without a
-        // route, so it is what says no rather than the edge above it.
+        // A service is reached without a route, so it says no itself.
         const checked = Photo.schema.shape.url.safeParse(url);
 
         if (!checked.success)
@@ -71,8 +70,7 @@ export class PhotosService
                 url: checked.data,
                 position: (highest?.at ?? -1) + 1,
 
-                // This table's stamp, not the product's. Each scoped table
-                // carries the claim itself.
+                // This table's stamp, not the product's.
                 ...this.#ctx.stamped("photos"),
             } as Row;
 
