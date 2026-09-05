@@ -26,6 +26,7 @@ export class OrdersService
     async list(): Promise<OrderPage>
     {
         const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
+        const now = this.#ctx.now();
 
         // A hold past its moment is one a read ignores, whether or not the
         // sweep has been by yet.
@@ -35,7 +36,9 @@ export class OrdersService
             .where(and(this.#scoped("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
 
         return {
-            orders: found.map((row) => this.#shown(row)),
+            orders: found.map((row) => this.#shown(
+                row.status === "reserved" && row.holdsUntil <= now ? { ...row, status: "expired" } : row,
+            )),
             reserved: held?.total ?? 0,
         };
     }
@@ -135,13 +138,14 @@ export class OrdersService
         }
         catch (cause)
         {
-            // Put back only if it is still ours to put back: a sweep or a cancel
-            // that ran meanwhile decided, and a refused card does not undecide it.
+            // Only the row this call marked paid, and back to what the clock
+            // says it is: expired if the moment passed while the bank thought
+            // about it, or nothing would ever move it again.
             await this.#ctx.write(() =>
                 this.#ctx.db
                     .update(orders)
-                    .set({ status: "reserved" })
-                    .where(and(this.#just(id), eq(orders.status, "paid"), gt(orders.holdsUntil, this.#ctx.now()))));
+                    .set({ status: won.holdsUntil > this.#ctx.now() ? "reserved" : "expired" })
+                    .where(and(this.#just(id), eq(orders.status, "paid"))));
 
             throw cause;
         }

@@ -1,0 +1,2991 @@
+# catalog, orders packed
+
+Every file of these plugins, one after another. A line starting
+with "==> " opens a file and names its path; everything until the next
+such line is that file, byte for byte.
+
+Rebuild it with:     node tools/pack/plugins.mjs unpack
+Rewrite this with:   node tools/pack/plugins.mjs pack catalog orders
+
+==> src/plugins/catalog/plugin.ts
+
+import { defineCommand, defineParticipant, definePlugin } from "@onetype/stack-api-kit";
+import { z } from "zod";
+
+import { BeforeList } from "./schemas/BeforeList";
+import { Config } from "./schemas/Config";
+import { PhotosService } from "./services/photos";
+import { ProductsService } from "./services/products";
+import { productRoutes } from "./routes/products";
+import { photos } from "./tables/photos";
+import { products } from "./tables/products";
+
+import type { Inside } from "./types/Context";
+import type { Rows } from "./types/Rows";
+import type { Services } from "./types/Services";
+
+export default definePlugin.over<Rows, Services>()("catalog", {
+    version: "1.0.0",
+
+    describe: "What a shop sells: products, their names in any language, and their prices.",
+
+    dependsOn: [],
+
+    config: Config.schema,
+
+    tables: { products, photos },
+
+    migrations: "./src/plugins/catalog/migrations",
+
+    scope: {
+        describe: "The shop a row belongs to.",
+        claim: "shopId",
+        tables: { products: "shopId", photos: "shopId" },
+    },
+
+    permissions: {
+        "catalog.read": { describe: "See this shop's products." },
+        "catalog.write": { describe: "Add, change and remove this shop's products." },
+    },
+
+    services: (ctx) =>
+    {
+        return { products: new ProductsService(ctx), photos: new PhotosService(ctx) };
+    },
+
+    routes: [...productRoutes],
+
+    emits: {
+        // Every payload carries the shop. A listener runs on nobody's
+        // behalf, so whose work this was travels here or nowhere.
+        "catalog.product.added": {
+            describe: "A product was added. Emitted after the transaction commits.",
+            schema: z.object({ id: z.uuid(), shopId: z.string(), cents: z.number().int().nonnegative() }),
+        },
+        "catalog.product.status-changed": {
+            describe: "A product moved between draft, listed and withdrawn.",
+            schema: z.object({
+                id: z.uuid(),
+                shopId: z.string(),
+                status: z.enum(["draft", "listed", "withdrawn"]),
+            }),
+        },
+        "catalog.product.removed": {
+            describe: "A product was removed, and nothing may still point at it.",
+            schema: z.object({ id: z.uuid(), shopId: z.string() }),
+        },
+    },
+
+    hooks: {
+        "catalog.product.before-list": {
+            describe: "Runs before a product is written. A string refuses it with that reason.",
+            schema: BeforeList.schema,
+        },
+    },
+
+    participates: {
+        "catalog.product.before-list": defineParticipant<Inside>()(BeforeList.schema, {
+            describe: "Refuses a shop that already holds as many products as its config allows.",
+            handle: async (_asked, ctx) =>
+            {
+                const held = await ctx.services.products.countMine();
+
+                return held >= ctx.config.maxPerShop
+                    ? `This shop already holds ${String(held)} products, which is the most it may have.`
+                    : undefined;
+            },
+        }),
+    },
+
+    commands: {
+        "catalog.withdraw-drafts": defineCommand<Inside>()({
+            describe: "Withdraws every product this shop left in draft.",
+            requires: ["catalog.write"],
+
+            schema: z.object({}),
+            run: async (_given, ctx) =>
+            {
+                const drafts = await ctx.services.products.list({ locale: "en", status: "draft" });
+
+                for (const product of drafts.products)
+                {
+                    await ctx.services.products.setStatus(product.id, "withdrawn");
+                }
+
+                ctx.log.info("drafts withdrawn", { count: drafts.products.length });
+            },
+        }),
+    },
+
+    setup: (ctx) =>
+    {
+        ctx.log.info("catalog ready", { pageSize: ctx.config.pageSize, locale: ctx.config.locale });
+    },
+
+    teardown: (ctx) =>
+    {
+        ctx.log.info("catalog stopped");
+    },
+});
+
+==> src/plugins/catalog/usage.md
+
+# catalog
+
+## Description
+
+What a shop sells. The first of two plugins: what one does alone, including
+the parts that only matter once text and tenancy are real.
+
+## Usage
+
+```ts
+import { Catalog } from "@plugins/catalog";
+
+const product = await Catalog.get(ctx, id);
+```
+
+`catalog.read` lists and searches; `catalog.write` adds, moves and removes.
+Every read answers only the caller's shop.
+
+## What it demonstrates
+
+- **scope** — `shopId` on the caller decides whose rows these are. Reads
+  narrow through `ctx.scoped`, and a write is stamped through `ctx.stamped`,
+  so a body naming another shop cannot place a row in it.
+- **Ordering in the service** — `Intl.Collator`, never SQL, which sorts by
+  code point and puts every accented name after Z.
+- **Two folds** — one drops accents so a search for `Uber` finds `Über`; the
+  other keeps them, so `Apfel` and `Äpfel` remain two products.
+- **Counting characters** — a name is bounded by what a reader sees, in the
+  schema as well as the parser, because `.max()` counts UTF-16 units.
+- **A cursor, not an offset** — order is decided in the service, so a page
+  number would shift the moment a product is written ahead of it.
+- **Answered** — a 201 carrying `location`, which no schema can express.
+- **hooks, commands, events** — each declared once, each with a test.
+
+## Refuses
+
+- No caller id: 401.
+- A missing permission: 403, never naming which.
+- No shop on the caller: 403, never a default shop.
+- Another shop's product: 404, the same answer as one that never existed.
+- A name over 120 characters, or empty once trimmed: 400.
+- A second product whose name differs only by case, width or ligature: 409.
+
+==> src/plugins/catalog/index.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Product } from "./schemas/Product";
+import type { ProductPage } from "./schemas/ProductPage";
+import type { Services } from "./types/Services";
+import type { Status } from "./schemas/Status";
+
+export const Catalog = {
+    services: (ctx: Context): Services =>
+    {
+        return ctx.use<Services>("catalog");
+    },
+
+    get: (ctx: Context, id: string): Promise<Product> =>
+    {
+        return Catalog.services(ctx).products.get(id);
+    },
+
+    list: (ctx: Context, locale: string): Promise<ProductPage> =>
+    {
+        return Catalog.services(ctx).products.list({ locale });
+    },
+
+    setStatus: (ctx: Context, id: string, status: Status): Promise<Product> =>
+    {
+        return Catalog.services(ctx).products.setStatus(id, status);
+    },
+};
+
+export type { Product as CatalogProduct } from "./schemas/Product";
+export type { ProductPage as CatalogProductPage } from "./schemas/ProductPage";
+export type { Status as CatalogStatus } from "./schemas/Status";
+
+==> src/plugins/catalog/migrations/0001-create-products.sql
+
+CREATE TABLE catalog_products (
+    id         TEXT PRIMARY KEY,
+    shop_id    TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    searched   TEXT NOT NULL,
+    same       TEXT NOT NULL,
+    cents      INTEGER NOT NULL CHECK (cents >= 0),
+    status     TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    sequence   INTEGER NOT NULL
+);
+
+CREATE INDEX catalog_products_shop ON catalog_products (shop_id, sequence);
+
+-- Two products in one shop cannot share a name, whatever case or accent the
+-- input played with: the folded form is what collides.
+CREATE UNIQUE INDEX catalog_products_named ON catalog_products (shop_id, same);
+
+==> src/plugins/catalog/migrations/0002-create-photos.sql
+
+CREATE TABLE catalog_photos (
+    id         TEXT PRIMARY KEY,
+    shop_id    TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    position   INTEGER NOT NULL
+);
+
+CREATE INDEX catalog_photos_product ON catalog_photos (shop_id, product_id, position);
+
+==> src/plugins/catalog/routes/products.ts
+
+import { Answered, defineRoute } from "@onetype/stack-api-kit";
+import { z } from "zod";
+
+import { Product } from "../schemas/Product";
+import { ProductPage } from "../schemas/ProductPage";
+import { Status } from "../schemas/Status";
+
+import type { Endpoint } from "@onetype/stack-api-kit";
+import type { Inside } from "../types/Context";
+
+const route = defineRoute<Inside>();
+
+export const productRoutes: readonly Endpoint<Inside>[] = [
+    route({
+        method: "GET",
+        path: "/catalog/products",
+        describe: "Lists this shop's products, ordered in the caller's language.",
+        requires: ["catalog.read"],
+        input: z.object({
+            locale: z.string().min(2).max(12).optional(),
+            status: Status.schema.optional(),
+            after: z.uuid().optional(),
+        }),
+        output: ProductPage.schema,
+        limit: { requests: 120, seconds: 60 },
+        handle: (input, ctx) =>
+        {
+            return ctx.services.products.list({
+                locale: input.locale ?? ctx.config.locale,
+                ...(input.status !== undefined && { status: input.status }),
+                ...(input.after !== undefined && { after: input.after }),
+            });
+        },
+    }),
+    route({
+        method: "GET",
+        path: "/catalog/products/:id",
+        describe: "Answers one product, if this shop sells it.",
+        requires: ["catalog.read"],
+        input: z.object({ id: z.uuid() }),
+        output: Product.schema,
+        limit: { requests: 120, seconds: 60 },
+        handle: async (input, ctx) =>
+        {
+            const product = await ctx.services.products.get(input.id);
+
+            return new Answered(200, product, { "cache-control": "private, max-age=30" });
+        },
+    }),
+    route({
+        method: "GET",
+        path: "/catalog/search",
+        describe: "Finds products whose name holds this, accents ignored.",
+        requires: ["catalog.read"],
+        input: z.object({ text: z.string().min(1).max(120) }),
+        output: z.object({ products: z.array(Product.schema) }),
+        limit: { requests: 60, seconds: 60 },
+        handle: async (input, ctx) =>
+        {
+            return { products: await ctx.services.products.matching(input.text) };
+        },
+    }),
+    route({
+        method: "POST",
+        path: "/catalog/products",
+        describe: "Adds a product to this shop.",
+        requires: ["catalog.write"],
+        input: z.object({
+            name: z.string().min(1).max(4000),
+            cents: z.number().int().nonnegative().max(100_000_000),
+        }),
+        output: Product.schema,
+        limit: { requests: 30, seconds: 60 },
+        handle: async (input, ctx) =>
+        {
+            const product = await ctx.services.products.add(input.name, input.cents);
+
+            return new Answered(201, product, { location: `/catalog/products/${product.id}` });
+        },
+    }),
+    route({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        describe: "Moves a product between draft, listed and withdrawn.",
+        requires: ["catalog.write"],
+        input: z.object({ id: z.uuid(), status: Status.schema }),
+        output: Product.schema,
+        limit: { requests: 60, seconds: 60 },
+        handle: (input, ctx) =>
+        {
+            return ctx.services.products.setStatus(input.id, input.status);
+        },
+    }),
+    route({
+        method: "DELETE",
+        path: "/catalog/products/:id",
+        describe: "Removes a product from this shop.",
+        requires: ["catalog.write"],
+        input: z.object({ id: z.uuid() }),
+        output: z.object({ removed: z.literal(true) }),
+        limit: { requests: 30, seconds: 60 },
+        handle: async (input, ctx) =>
+        {
+            await ctx.services.products.remove(input.id);
+
+            return { removed: true as const };
+        },
+    }),
+];
+
+==> src/plugins/catalog/schemas/BeforeList.ts
+
+import { z } from "zod";
+
+export const BeforeList = {
+    schema: z.object({
+        id: z.uuid(),
+        name: z.string(),
+        cents: z.number().int().nonnegative(),
+    }),
+};
+
+export type BeforeList = z.infer<typeof BeforeList.schema>;
+
+==> src/plugins/catalog/schemas/Config.ts
+
+import { z } from "zod";
+
+export const Config = {
+    schema: z.object({
+        pageSize: z.number().int().positive().max(100).default(25),
+        maxPerShop: z.number().int().positive().default(500),
+
+        locale: z.string().min(2).max(12).default("en"),
+    }),
+};
+
+export type Config = z.infer<typeof Config.schema>;
+
+==> src/plugins/catalog/schemas/Photo.ts
+
+import { z } from "zod";
+
+export const Photo = {
+    schema: z.object({
+        id: z.uuid(),
+        // z.url() takes "javascript:alert(1)": it is a url, and a browser runs
+        // it. A picture is fetched, so only the schemes that fetch one.
+        url: z.url().refine(
+            (one) => one.startsWith("https://") || one.startsWith("http://"),
+            "A photo is fetched over http or https.",
+        ).max(2000),
+        position: z.number().int().nonnegative(),
+    }),
+};
+
+export type Photo = z.infer<typeof Photo.schema>;
+
+==> src/plugins/catalog/schemas/Product.ts
+
+import { Refusal } from "@onetype/stack-api-kit";
+import { z } from "zod";
+
+import { Status } from "./Status";
+import { Text } from "@utils/Text";
+
+const LIMIT = 120;
+
+export const Product = {
+    schema: z.object({
+        id: z.uuid(),
+
+        name: z.string().refine((raw) => Text.characters(raw) <= LIMIT, {
+            message: `A name is at most ${String(LIMIT)} characters.`,
+        }),
+        cents: z.number().int().nonnegative(),
+        status: Status.schema,
+        createdAt: z.iso.datetime(),
+    }),
+
+    limit: LIMIT,
+
+    parseName: (raw: string): string =>
+    {
+        const name = Text.visible(raw).normalize("NFC").trim().replace(/\s+/gu, " ");
+        const length = Text.characters(name);
+
+        // Bounded twice: what a reader counts, and what storing it costs. One
+        // letter can carry three thousand marks and still read as one.
+        if (Text.units(name) > LIMIT * 8)
+        {
+            throw new Refusal(
+                400,
+                "INVALID_NAME",
+                `A name is 1 to ${String(LIMIT)} characters.`,
+                { name: `Between 1 and ${String(LIMIT)} characters.` },
+            );
+        }
+
+        if (length === 0 || length > LIMIT)
+        {
+            throw new Refusal(
+                400,
+                "INVALID_NAME",
+                `A name is 1 to ${String(LIMIT)} characters. This one is ${String(length)}.`,
+                { name: `Between 1 and ${String(LIMIT)} characters.` },
+            );
+        }
+
+        return name;
+    },
+};
+
+export type Product = z.infer<typeof Product.schema>;
+
+==> src/plugins/catalog/schemas/ProductPage.ts
+
+import { z } from "zod";
+
+import { Product } from "./Product";
+
+export const ProductPage = {
+    schema: z.object({
+        products: z.array(Product.schema),
+
+        after: z.string().optional(),
+    }),
+};
+
+export type ProductPage = z.infer<typeof ProductPage.schema>;
+
+==> src/plugins/catalog/schemas/Status.ts
+
+import { z } from "zod";
+
+export const Status = {
+    schema: z.enum(["draft", "listed", "withdrawn"]),
+};
+
+export type Status = z.infer<typeof Status.schema>;
+
+==> src/plugins/catalog/services/photos.ts
+
+import { and, count, eq, max } from "drizzle-orm";
+import { Refusal } from "@onetype/stack-api-kit";
+
+import { Photo } from "../schemas/Photo";
+import { photos } from "../tables/photos";
+import { products } from "../tables/products";
+
+import type { Inside } from "../types/Context";
+
+import type { SQL } from "drizzle-orm";
+
+type Row = typeof photos.$inferSelect;
+
+export class PhotosService
+{
+    static #most = 50;
+
+    readonly #ctx: Inside;
+
+    constructor(ctx: Inside)
+    {
+        this.#ctx = ctx;
+    }
+
+    async of(productId: string): Promise<Photo[]>
+    {
+        await this.#owned(productId);
+
+        const found = await this.#ctx.db
+            .select()
+            .from(photos)
+            .where(and(eq(photos.productId, productId), this.#scoped()))
+            .orderBy(photos.position);
+
+        return found.map((row) => this.#shown(row));
+    }
+
+    async add(productId: string, url: string): Promise<Photo>
+    {
+        await this.#owned(productId);
+
+        // The schema says what a url is, and a service is reached without a
+        // route, so it is what says no rather than the edge above it.
+        const asked = Photo.schema.shape.url.safeParse(url);
+
+        if (!asked.success)
+        {
+            throw new Refusal(400, "INVALID_URL", "A photo needs a url that a browser could fetch.");
+        }
+
+        return this.#ctx.tx(async (inside) =>
+        {
+            const [held] = await inside.db
+                .select({ many: count() })
+                .from(photos)
+                .where(and(eq(photos.productId, productId), this.#scoped()));
+
+            if ((held?.many ?? 0) >= PhotosService.#most)
+            {
+                throw new Refusal(409, "TOO_MANY", `A product carries at most ${String(PhotosService.#most)} photos.`);
+            }
+
+            const [highest] = await inside.db
+                .select({ at: max(photos.position) })
+                .from(photos)
+                .where(and(eq(photos.productId, productId), this.#scoped()));
+
+            const row = {
+                id: crypto.randomUUID(),
+                productId,
+                url: asked.data,
+                position: (highest?.at ?? -1) + 1,
+
+                // This table's stamp, not the product's. Each scoped table
+                // carries the claim itself.
+                ...this.#ctx.stamped("photos"),
+            } as Row;
+
+            await inside.db.insert(photos).values(row);
+
+            return this.#shown(row);
+        });
+    }
+
+    async dropFor(productId: string): Promise<number>
+    {
+        const gone = await this.#ctx.db
+            .delete(photos)
+            .where(and(eq(photos.productId, productId), this.#scoped()))
+            .returning({ id: photos.id });
+
+        return gone.length;
+    }
+
+    async #owned(productId: string): Promise<void>
+    {
+        const [found] = await this.#ctx.db
+            .select({ id: products.id })
+            .from(products)
+            .where(and(eq(products.id, productId), this.#ctx.scoped<SQL>("products")));
+
+        if (found === undefined)
+        {
+            throw new Refusal(404, "NOT_FOUND", "No such product.");
+        }
+    }
+
+    #scoped(): SQL | undefined
+    {
+        return this.#ctx.scoped<SQL>("photos");
+    }
+
+    #shown(row: Row): Photo
+    {
+        return { id: row.id, url: row.url, position: row.position };
+    }
+}
+
+==> src/plugins/catalog/services/products.ts
+
+import { Refusal } from "@onetype/stack-api-kit";
+
+import { Status } from "../schemas/Status";
+import { and, count, eq, max } from "drizzle-orm";
+
+import { Ordering } from "@utils/Ordering";
+import { Paging } from "../utils/Paging";
+import { Product } from "../schemas/Product";
+import { Text } from "@utils/Text";
+import { photos } from "../tables/photos";
+import { products } from "../tables/products";
+
+import type { Inside } from "../types/Context";
+import type { Listing } from "../types/Listing";
+import type { ProductPage } from "../schemas/ProductPage";
+import type { SQL } from "drizzle-orm";
+
+
+type Row = typeof products.$inferSelect;
+
+export class ProductsService
+{
+    readonly #ctx: Inside;
+
+    constructor(ctx: Inside)
+    {
+        this.#ctx = ctx;
+    }
+
+    async list(asked: Listing): Promise<ProductPage>
+    {
+        const found = await this.#ctx.db
+            .select()
+            .from(products)
+            .where(this.#scoped(asked.status));
+
+        const collator = Ordering.by(asked.locale);
+        const sorted = [...found].sort((one, two) => collator.compare(one.name, two.name));
+
+        const { page, after } = Paging.from(sorted, this.#ctx.config.pageSize, asked.after);
+
+        return {
+            products: page.map((row) => this.#shown(row)),
+            ...(after !== undefined && { after }),
+        };
+    }
+
+    async get(id: string): Promise<Product>
+    {
+        const [row] = await this.#ctx.db.select().from(products).where(this.#just(id));
+
+        if (row === undefined)
+        {
+            throw this.#missing();
+        }
+
+        return this.#shown(row);
+    }
+
+    async matching(text: string): Promise<Product[]> 
+    {
+        const looking = Text.searched(text);
+
+        // Everything holds "", so a search that folded away would answer with
+        // the whole shop rather than with nothing.
+        if (looking === "")
+        {
+            return [];
+        }
+
+        const found = await this.#ctx.db.select().from(products).where(this.#scoped());
+
+        return found
+            .filter((row) => row.searched.includes(looking))
+            .map((row) => this.#shown(row));
+    }
+
+    async add(name: string, cents: number): Promise<Product> 
+    {
+        const clean = Product.parseName(name);
+        const searched = Text.searched(clean);
+        const same = Text.same(clean);
+
+        const refusal = await this.#ctx.hooks.run("catalog.product.before-list", {
+            id: crypto.randomUUID(),
+            name: clean,
+            cents,
+        });
+
+        if (refusal !== undefined)
+        {
+            throw new Refusal(409, "PRODUCT_REFUSED", refusal);
+        }
+
+        return this.#ctx.tx(async (inside) =>
+        {
+            // Counted again inside the transaction. The hook counts before it
+            // opens, so ten arriving at once all read the same number and all
+            // pass a limit only one of them should.
+            const [held] = await inside.db
+                .select({ many: count() })
+                .from(products)
+                .where(this.#scoped());
+
+            if ((held?.many ?? 0) >= this.#ctx.config.maxPerShop)
+            {
+                throw new Refusal(
+                    409,
+                    "TOO_MANY",
+                    `This shop already holds ${String(this.#ctx.config.maxPerShop)} products.`,
+                );
+            }
+
+            const [highest] = await inside.db
+                .select({ at: max(products.sequence) })
+                .from(products)
+                .where(this.#scoped());
+
+            const row = {
+                id: crypto.randomUUID(),
+                name: clean,
+                searched,
+                same,
+                cents,
+                status: "draft",
+                createdAt: new Date(this.#ctx.now()).toISOString(),
+                sequence: (highest?.at ?? 0) + 1,
+
+                // Written from the caller, never from the input: without this
+                // a caller could store a row into another shop.
+                ...this.#ctx.stamped("products"),
+            } as Row;
+
+            await inside.db.insert(products).values(row).onConflictDoNothing();
+
+            const [written] = await inside.db.select().from(products).where(this.#just(row.id));
+
+            if (written === undefined)
+            {
+                throw new Refusal(409, "NAME_TAKEN", "This shop already sells something by that name.");
+            }
+
+            inside.events.emit("catalog.product.added", { id: row.id, shopId: row.shopId, cents });
+
+            return this.#shown(written);
+        });
+    }
+
+    // What a product may become next. Nothing returns from withdrawn: a shop
+    // that wants it back lists it again as a new one.
+    static #next: Readonly<Record<Status, readonly Status[]>> = {
+        draft: ["listed"],
+        listed: ["withdrawn"],
+        withdrawn: [],
+    };
+
+    async setStatus(id: string, status: Status): Promise<Product>
+    {
+        const where = this.#just(id);
+
+        return this.#ctx.tx(async (inside) =>
+        {
+            const [held] = await inside.db.select().from(products).where(where);
+
+            if (held === undefined)
+            {
+                throw this.#missing();
+            }
+
+            const now = Status.schema.parse(held.status);
+
+            if (!ProductsService.#next[now].includes(status))
+            {
+                throw new Refusal(
+                    409,
+                    "WRONG_STATUS",
+                    `A product that is ${now} cannot become ${status}.`,
+                );
+            }
+
+            const [row] = await inside.db.update(products).set({ status }).where(where).returning();
+
+            if (row === undefined)
+            {
+                throw this.#missing();
+            }
+
+            inside.events.emit("catalog.product.status-changed", { id, shopId: row.shopId, status });
+
+            return this.#shown(row);
+        });
+    }
+
+    async remove(id: string): Promise<void>
+    {
+        const where = this.#just(id);
+
+        await this.#ctx.tx(async (inside) =>
+        {
+            const gone = await inside.db
+                .delete(products)
+                .where(where)
+                .returning({ id: products.id, shopId: products.shopId });
+
+            const removed = gone[0];
+
+            if (removed === undefined)
+            {
+                throw this.#missing();
+            }
+
+            // In the same transaction as the product. Left behind, they are
+            // reachable by a dead id, and inherited by the next row to use it.
+            await inside.db.delete(photos).where(eq(photos.productId, id));
+
+            inside.events.emit("catalog.product.removed", { id, shopId: removed.shopId });
+        });
+    }
+
+    async countMine(): Promise<number>
+    {
+        const found = await this.#ctx.db.select({ id: products.id }).from(products).where(this.#scoped());
+
+        return found.length;
+    }
+
+    #scoped(status?: Status): SQL | undefined
+    {
+        const shop = this.#ctx.scoped<SQL>("products");
+
+        return status === undefined ? shop : and(shop, eq(products.status, status));
+    }
+
+    #just(id: string): SQL | undefined
+    {
+        return and(eq(products.id, id), this.#scoped());
+    }
+
+    #missing(): Refusal
+    {
+        return new Refusal(404, "NOT_FOUND", "No such product.");
+    }
+
+    #shown(row: Row): Product
+    {
+        return {
+            id: row.id,
+            name: row.name,
+            cents: row.cents,
+            status: Product.schema.shape.status.parse(row.status),
+            createdAt: row.createdAt,
+        };
+    }
+}
+
+==> src/plugins/catalog/tables/photos.ts
+
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const photos = sqliteTable("catalog_photos", {
+    id: text("id").primaryKey(),
+
+    shopId: text("shop_id").notNull(),
+
+    productId: text("product_id").notNull(),
+    url: text("url").notNull(),
+    position: integer("position").notNull(),
+}, (table) => [
+    index("catalog_photos_product").on(table.shopId, table.productId, table.position),
+]);
+
+==> src/plugins/catalog/tables/products.ts
+
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const products = sqliteTable("catalog_products", {
+    id: text("id").primaryKey(),
+
+    shopId: text("shop_id").notNull(),
+
+    name: text("name").notNull(),
+
+    searched: text("searched").notNull(),
+
+    same: text("same").notNull(),
+
+    cents: integer("cents").notNull(),
+
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+
+    sequence: integer("sequence").notNull(),
+}, (table) => [
+    index("catalog_products_shop").on(table.shopId, table.sequence),
+    uniqueIndex("catalog_products_named").on(table.shopId, table.same),
+]);
+
+==> src/plugins/catalog/tests/lifecycle.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { caller, serving, type Serving } from "./serving";
+
+let api: Serving;
+
+afterEach(async () =>
+{
+    await api.stop();
+});
+
+async function made(): Promise<string>
+{
+    const answer = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `P ${crypto.randomUUID()}`, cents: 100 },
+        caller: caller(),
+    });
+
+    return (answer.body as { id: string }).id;
+}
+
+function moved(id: string, status: string): Promise<{ status: number }>
+{
+    return api.kernel.handle({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        input: { id, status },
+        caller: caller(),
+    });
+}
+
+describe("a product's life", () =>
+{
+    test("does not run backwards once it has left the shelves", async () =>
+    {
+        api = await serving();
+
+        const id = await made();
+
+        expect((await moved(id, "listed")).status).toBe(200);
+        expect((await moved(id, "withdrawn")).status).toBe(200);
+        expect((await moved(id, "listed")).status).toBe(409);
+    });
+
+    test("and nothing is withdrawn that was never for sale", async () =>
+    {
+        api = await serving();
+
+        expect((await moved(await made(), "withdrawn")).status).toBe(409);
+    });
+});
+
+describe("a shop's limit", () =>
+{
+    test("holds when everything arrives at once", async () =>
+    {
+        api = await serving({ maxPerShop: 3 });
+
+        const adding = Array.from({ length: 10 }, () => api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: `P ${crypto.randomUUID()}`, cents: 100 },
+            caller: caller(),
+        }));
+
+        const answers = await Promise.all(adding);
+
+        expect(answers.filter((one) => one.status === 201)).toHaveLength(3);
+    });
+});
+
+==> src/plugins/catalog/tests/naming.test.ts
+
+import { describe, expect, test } from "vitest";
+
+import { caller, serving } from "./serving";
+
+import { Ordering } from "@utils/Ordering";
+import { Text } from "@utils/Text";
+
+describe("two names that read differently", () =>
+{
+    test("stay different, whatever they decompose into", () =>
+    {
+        expect(Text.same("Model 2")).not.toBe(Text.same("Model ²"));
+        expect(Text.same("Mark IX")).not.toBe(Text.same("Mark Ⅸ"));
+        expect(Text.same("5 kg")).not.toBe(Text.same("5 ㎏"));
+    });
+});
+
+describe("two names that read the same", () =>
+{
+    test("are one name across widths and alphabets", () =>
+    {
+        expect(Text.same("Ｗidget")).toBe(Text.same("Widget"));
+        expect(Text.same("Widgеt")).toBe(Text.same("Widget"));
+    });
+
+    test("and a joiner that holds a word together is kept", () =>
+    {
+        expect(Text.visible("👨‍👩‍👧")).toBe("👨‍👩‍👧");
+        expect(Text.visible("می‌رود")).toBe("می‌رود");
+    });
+
+    test("are the same name, however they were typed", () =>
+    {
+        expect(Text.same("Wid​get")).toBe(Text.same("Widget"));
+        expect(Text.same("Wid‎get")).toBe(Text.same("Widget"));
+        expect(Text.same("Wid­get")).toBe(Text.same("Widget"));
+    });
+
+    test("and a name that only orders itself backwards is not a new one", () =>
+    {
+        expect(Text.same("Safe‮gnp.exe")).toBe(Text.same("Safegnp.exe"));
+    });
+});
+
+describe("what a name costs to store", () =>
+{
+    test("is counted, and not only what a reader sees", () =>
+    {
+        const one = `a${"́".repeat(3000)}`;
+
+        expect(Text.characters(one)).toBe(1);
+        expect(Text.units(one)).toBeGreaterThan(120);
+    });
+});
+
+describe("searching for nothing", () =>
+{
+    test("is not a search for everything", () =>
+    {
+        expect(Text.searched(" ")).toBe("");
+        expect(Text.searched("́")).toBe("");
+    });
+});
+
+describe("a locale nobody could read", () =>
+{
+    test("is refused, not answered with a broken server", () =>
+    {
+        expect(() => Ordering.by("!!")).not.toThrow();
+        expect(() => Ordering.by("en_US")).not.toThrow();
+        expect(() => Ordering.by("--")).not.toThrow();
+    });
+});
+
+describe("a search that folds away to nothing", () =>
+{
+    test("answers nothing, not everything", async () =>
+    {
+        const api = await serving();
+
+        await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "A real product", cents: 100 },
+            caller: caller(),
+        });
+
+        const found = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/search",
+            input: { text: " " },
+            caller: caller(),
+        });
+
+        expect((found.body as { products: unknown[] }).products).toEqual([]);
+
+        await api.stop();
+    });
+});
+
+==> src/plugins/catalog/tests/paging.test.ts
+
+import { describe, expect, test } from "vitest";
+
+import { Paging } from "../utils/Paging";
+
+const rows = ["a", "b", "c", "d", "e"].map((id) => ({ id }));
+
+describe("a page of an ordered list", () =>
+{
+    test("starts at the beginning and says where the next one starts", () =>
+    {
+        expect(Paging.from(rows, 2)).toEqual({ page: [{ id: "a" }, { id: "b" }], after: "b" });
+    });
+
+    test("continues from the cursor, never repeating it", () =>
+    {
+        expect(Paging.from(rows, 2, "b")).toEqual({ page: [{ id: "c" }, { id: "d" }], after: "d" });
+    });
+
+    test("and answers no cursor on the last page", () =>
+    {
+        expect(Paging.from(rows, 2, "d")).toEqual({ page: [{ id: "e" }] });
+        expect(Paging.from(rows, 10)).toEqual({ page: rows });
+    });
+
+    test("answers nothing for a cursor no row carries", () =>
+    {
+        expect(Paging.from(rows, 2, "gone")).toEqual({ page: [{ id: "a" }, { id: "b" }], after: "b" });
+    });
+
+    test("and nothing at all for an empty list", () =>
+    {
+        expect(Paging.from([], 2)).toEqual({ page: [] });
+    });
+});
+
+==> src/plugins/catalog/tests/photos.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { eq } from "drizzle-orm";
+
+import { photos } from "../tables/photos";
+
+import type { Inside } from "../types/Context";
+
+import { caller, serving, type Serving } from "./serving";
+
+let api: Serving;
+
+afterEach(async () =>
+{
+    await api.stop();
+});
+
+function held(): { photos: { add: (id: string, url: string) => Promise<unknown>; of: (id: string) => Promise<unknown[]> } }
+{
+    return api.kernel.context("catalog", caller()).services as never;
+}
+
+async function made(): Promise<string>
+{
+    const answer = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `P ${crypto.randomUUID()}`, cents: 100 },
+        caller: caller(),
+    });
+
+    return (answer.body as { id: string }).id;
+}
+
+describe("a photo", () =>
+{
+    test("is refused unless its url is one a browser could fetch", async () =>
+    {
+        api = await serving();
+
+        const id = await made();
+
+        await expect(held().photos.add(id, "javascript:alert(1)")).rejects.toThrow();
+        await expect(held().photos.add(id, "not a url")).rejects.toThrow();
+    });
+
+    test("and a product carries only so many", async () =>
+    {
+        api = await serving();
+
+        const id = await made();
+
+        for (let at = 0; at < 50; at += 1)
+        {
+            await held().photos.add(id, `https://pictures.example.test/${String(at)}.jpg`);
+        }
+
+        await expect(held().photos.add(id, "https://pictures.example.test/51.jpg")).rejects.toThrow();
+    });
+
+    test("and goes when the product it belongs to goes", async () =>
+    {
+        api = await serving();
+
+        const id = await made();
+
+        await held().photos.add(id, "https://pictures.example.test/one.jpg");
+        await api.kernel.handle({ method: "DELETE", path: "/catalog/products/:id", input: { id }, caller: caller() });
+
+        // Asked for by the dead id: a row left behind is still reachable, and
+        // is inherited by whatever takes that id next.
+        const inside = api.kernel.context("catalog", caller()) as unknown as Inside;
+        const left = await inside.db.select().from(photos).where(eq(photos.productId, id));
+
+        expect(left).toEqual([]);
+    });
+});
+
+==> src/plugins/catalog/tests/routes.test.ts
+
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
+import { calling } from "@onetype/stack-api-kit/testing";
+
+import { caller, serving, type Serving } from "./serving";
+
+let api: Serving;
+
+beforeEach(async () =>
+{
+    api = await serving();
+});
+
+afterEach(async () =>
+{
+    await api.stop();
+});
+
+async function added(name = "A product"): Promise<{ id: string }>
+{
+    const answer = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name, cents: 2500 },
+        caller: caller(),
+    });
+
+    return answer.body as { id: string };
+}
+
+describe("authentication", () =>
+{
+    test("refuses a caller with no id", async () =>
+    {
+        const answer = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products",
+            input: {},
+            caller: { id: undefined, permissions: [], claims: {} },
+        });
+
+        expect(answer.status).toBe(401);
+    });
+});
+
+describe("permissions", () =>
+{
+    test("refuses a reader who tries to write, naming no permission", async () =>
+    {
+        const reader = calling(["catalog.read"], "u2", { shopId: "acme" });
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "Theirs", cents: 100 },
+            caller: reader,
+        });
+
+        expect(answer.status).toBe(403);
+        expect(JSON.stringify(answer.body)).not.toContain("catalog.write");
+    });
+});
+
+describe("input", () =>
+{
+    test("refuses a body that fails the schema before a handler sees it", async () =>
+    {
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "A product", cents: -1 },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(400);
+    });
+
+    test("refuses a name of nothing but spaces", async () =>
+    {
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "   ", cents: 100 },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(400);
+    });
+});
+
+describe("answers", () =>
+{
+    test("says 201 and where the product went", async () =>
+    {
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "A product", cents: 100 },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(201);
+        expect(answer.headers?.location).toMatch(/^\/catalog\/products\//);
+    });
+
+    test("sends back only what the schema names", async () =>
+    {
+        const made = await added();
+
+        const answer = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products/:id",
+            input: { id: made.id },
+            caller: caller(),
+        });
+
+        expect(Object.keys(answer.body as object).sort())
+            .toEqual(["cents", "createdAt", "id", "name", "status"]);
+    });
+});
+
+describe("pages", () =>
+{
+    test("walks a cursor without repeating or skipping", async () =>
+    {
+        api = await serving({ pageSize: 2 });
+
+        for (const name of ["Delta", "Alpha", "Echo", "Bravo", "Charlie"])
+        {
+            await added(name);
+        }
+
+        const seen: string[] = [];
+        let after: string | undefined;
+
+        for (let page = 0; page < 5; page += 1)
+        {
+            const answer = await api.kernel.handle({
+                method: "GET",
+                path: "/catalog/products",
+                input: after === undefined ? {} : { after },
+                caller: caller(),
+            });
+
+            const body = answer.body as { products: { name: string }[]; after?: string };
+
+            seen.push(...body.products.map((one) => one.name));
+            after = body.after;
+
+            if (after === undefined)
+            {
+                break;
+            }
+        }
+
+        expect(seen).toEqual(["Alpha", "Bravo", "Charlie", "Delta", "Echo"]);
+    });
+});
+
+==> src/plugins/catalog/tests/scoping.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { caller, nobody, serving, type Serving } from "./serving";
+
+let api: Serving;
+
+afterEach(async () =>
+{
+    await api.stop();
+});
+
+async function added(shop: string, name: string): Promise<string>
+{
+    const answer = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name, cents: 1000 },
+        caller: caller(shop),
+    });
+
+    return (answer.body as { id: string }).id;
+}
+
+describe("what a shop may reach", () =>
+{
+    test("answers only its own products", async () =>
+    {
+        api = await serving();
+
+        await added("acme", "Ours");
+        await added("other", "Theirs");
+
+        const answer = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products",
+            input: {},
+            caller: caller("acme"),
+        });
+
+        expect(answer.body).toMatchObject({ products: [{ name: "Ours" }] });
+    });
+
+    test("answers 404 for another shop's real id, as for one that never existed", async () =>
+    {
+        api = await serving();
+
+        const theirs = await added("other", "Theirs");
+
+        const answer = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products/:id",
+            input: { id: theirs },
+            caller: caller("acme"),
+        });
+
+        expect(answer.status).toBe(404);
+    });
+
+    test("writes a product into the caller's shop, whatever the body says", async () =>
+    {
+        api = await serving();
+
+        const mine = await added("acme", "Ours");
+
+        const seen = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products/:id",
+            input: { id: mine },
+            caller: caller("other"),
+        });
+
+        expect(seen.status).toBe(404);
+    });
+
+    test("refuses a caller carrying no shop, rather than defaulting", async () =>
+    {
+        api = await serving();
+
+        const answer = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products",
+            input: {},
+            caller: nobody(),
+        });
+
+        expect(answer.status).toBe(403);
+    });
+});
+
+==> src/plugins/catalog/tests/serving.ts
+
+import { booting, calling } from "@onetype/stack-api-kit/testing";
+
+import catalog from "../plugin";
+
+import type { Booted, Caller } from "@onetype/stack-api-kit/testing";
+import type { Config } from "../schemas/Config";
+import type { Rows } from "../types/Rows";
+
+export type Serving = Booted;
+
+export function serving(config: Partial<Config> = {}, now?: () => number): Promise<Serving>
+{
+    return booting({
+        plugins: [catalog],
+        config: { catalog: config },
+        ...(now !== undefined && { now }),
+    });
+}
+
+export function caller(
+    shopId = "acme",
+    permissions: readonly string[] = ["catalog.read", "catalog.write"],
+    id = "11111111-1111-4111-8111-111111111111",
+): Caller
+{
+    return calling(permissions, id, { shopId });
+}
+
+export function nobody(): Caller
+{
+    return calling(["catalog.read", "catalog.write"], "22222222-2222-4222-8222-222222222222");
+}
+
+export function rows(api: Serving): Rows
+{
+    return api.kernel.context("catalog").db as Rows;
+}
+
+==> src/plugins/catalog/tests/text.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { caller, serving, type Serving } from "./serving";
+
+let api: Serving;
+
+afterEach(async () =>
+{
+    await api.stop();
+});
+
+async function add(name: string): Promise<number>
+{
+    const answer = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name, cents: 100 },
+        caller: caller(),
+    });
+
+    return answer.status;
+}
+
+async function named(locale?: string): Promise<string[]>
+{
+    const answer = await api.kernel.handle({
+        method: "GET",
+        path: "/catalog/products",
+        input: locale === undefined ? {} : { locale },
+        caller: caller(),
+    });
+
+    return (answer.body as { products: { name: string }[] }).products.map((one) => one.name);
+}
+
+describe("ordering", () =>
+{
+    test("puts an accented name where a reader expects it, not after Z", async () =>
+    {
+        api = await serving({ locale: "de" });
+
+        for (const name of ["Zebra", "Äpfel", "Apfel", "Österreich", "Ostern"])
+        {
+            await add(name);
+        }
+
+        expect(await named()).toEqual(["Apfel", "Äpfel", "Ostern", "Österreich", "Zebra"]);
+    });
+
+    test("orders Turkish the way Turkish is ordered", async () =>
+    {
+        api = await serving({ locale: "tr" });
+
+        for (const name of ["Simit", "Şeker", "Sucuk"])
+        {
+            await add(name);
+        }
+
+        expect(await named("tr")).toEqual(["Simit", "Sucuk", "Şeker"]);
+    });
+
+    // A tag naming its script gets that script's order. The stack does not
+    // pick one for a language that writes in two.
+    test("orders by the script the caller named", async () =>
+    {
+        api = await serving({ locale: "sr-Latn" });
+
+        for (const name of ["Cvet", "Ćuprija", "Čvor"])
+        {
+            await add(name);
+        }
+
+        expect(await named("sr-Latn")).toEqual(["Cvet", "Čvor", "Ćuprija"]);
+    });
+
+    test("and falls back to English rather than failing on a tag it cannot read", async () =>
+    {
+        api = await serving();
+
+        for (const name of ["Beta", "Alpha"])
+        {
+            await add(name);
+        }
+
+        expect(await named("!!")).toEqual(["Alpha", "Beta"]);
+    });
+});
+
+describe("matching", () =>
+{
+    test("finds an accented name from an unaccented search", async () =>
+    {
+        api = await serving();
+
+        await add("Übergrößen");
+
+        const answer = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/search",
+            input: { text: "ubergrossen" },
+            caller: caller(),
+        });
+
+        expect(answer.body).toMatchObject({ products: [{ name: "Übergrößen" }] });
+    });
+});
+
+describe("uniqueness", () =>
+{
+    test("refuses a second name that differs only by case", async () =>
+    {
+        api = await serving();
+
+        expect(await add("Über")).toBe(201);
+        expect(await add("ÜBER")).toBe(409);
+    });
+
+    test("but lets two real words coexist, accents and all", async () =>
+    {
+        api = await serving();
+
+        expect(await add("Apfel")).toBe(201);
+        expect(await add("Äpfel")).toBe(201);
+    });
+
+    // A ligature is a different name, because the fold that would join it also
+    // joins "Model 2" with "Model ²", and a shop sells both of those.
+    test("refuses a name hidden behind characters that draw nothing", async () =>
+    {
+        api = await serving();
+
+        expect(await add("Office")).toBe(201);
+        expect(await add("Offi\u200Bce")).toBe(409);
+    });
+
+    test("but keeps two names a reader can tell apart", async () =>
+    {
+        api = await serving();
+
+        expect(await add("Model 2")).toBe(201);
+        expect(await add("Model ²")).toBe(201);
+    });
+});
+
+describe("length", () =>
+{
+    test("counts characters a reader sees, not the units that hold them", async () =>
+    {
+        api = await serving();
+
+        expect(await add("👨‍👩‍👧‍👦".repeat(20))).toBe(201);
+        expect(await add("あ".repeat(121))).toBe(400);
+    });
+});
+
+==> src/plugins/catalog/types/Context.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Config } from "../schemas/Config";
+import type { Rows } from "./Rows";
+import type { Services } from "./Services";
+
+export type Inside = Context<Config, Services, Rows>;
+
+==> src/plugins/catalog/types/Listing.ts
+
+import type { Status } from "../schemas/Status";
+
+export type Listing = {
+    locale: string;
+    status?: Status;
+    after?: string;
+};
+
+==> src/plugins/catalog/types/Rows.ts
+
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+
+import type { photos } from "../tables/photos";
+import type { products } from "../tables/products";
+
+export type Rows = BetterSQLite3Database<{ products: typeof products; photos: typeof photos }>;
+
+==> src/plugins/catalog/types/Services.ts
+
+import type { PhotosService } from "../services/photos";
+import type { ProductsService } from "../services/products";
+
+export type Services = {
+    products: ProductsService;
+    photos: PhotosService;
+};
+
+==> src/plugins/catalog/utils/Paging.ts
+
+class PagingUtil
+{
+    from<Row extends { id: string }>(sorted: readonly Row[], size: number, after?: string):
+        { page: readonly Row[]; after?: string }
+    {
+        const start = after === undefined ? 0 : sorted.findIndex((row) => row.id === after) + 1;
+        const page = sorted.slice(start, start + size);
+        const last = page.at(-1);
+
+        return {
+            page,
+            ...(start + size < sorted.length && last !== undefined && { after: last.id }),
+        };
+    }
+}
+
+export const Paging = new PagingUtil();
+
+==> src/plugins/orders/plugin.ts
+
+import { defineCommand, defineListener, defineParticipant, definePlugin } from "@onetype/stack-api-kit";
+import { z } from "zod";
+
+import { Config } from "./schemas/Config";
+import { OrdersService } from "./services/orders";
+import { Reserving } from "./services/Reserving";
+import { orderRoutes } from "./routes/orders";
+import { orders } from "./tables/orders";
+
+import type { Inside } from "./types/Context";
+import type { Rows } from "./types/Rows";
+import type { Services } from "./types/Services";
+
+export default definePlugin.over<Rows, Services>()("orders", {
+    version: "1.0.0",
+
+    describe: "Holding a product, paying for it, and letting go when nobody does.",
+
+    dependsOn: ["catalog"],
+
+    config: Config.schema,
+
+    tables: { orders },
+
+    migrations: "./src/plugins/orders/migrations",
+
+    outbound: ["https://payments.example.test"],
+
+    scope: {
+        describe: "The shop an order belongs to.",
+        claim: "shopId",
+        tables: { orders: "shopId" },
+    },
+
+    permissions: {
+        "orders.read": { describe: "See this shop's orders." },
+        "orders.write": { describe: "Hold, pay for and cancel this shop's orders." },
+    },
+
+    services: (ctx) =>
+    {
+        return { orders: new OrdersService(ctx) };
+    },
+
+    routes: [...orderRoutes],
+
+    emits: {
+        // Every payload carries the shop, because a listener has no caller
+        // to ask and an outbox keeps no request.
+        "orders.order.reserved": {
+            describe: "A product was held. Emitted after the transaction commits.",
+            schema: z.object({ id: z.uuid(), shopId: z.string(), productId: z.uuid() }),
+        },
+        "orders.order.paid": {
+            describe: "An order was paid for.",
+            schema: z.object({
+                id: z.uuid(),
+                shopId: z.string(),
+                cents: z.number().int().nonnegative(),
+            }),
+        },
+        "orders.order.cancelled": {
+            describe: "A held order was let go by whoever held it.",
+            schema: z.object({ id: z.uuid(), shopId: z.string() }),
+        },
+        "orders.order.expired": {
+            describe: "A hold ran out before anyone paid.",
+            schema: z.object({ id: z.uuid(), shopId: z.string() }),
+        },
+    },
+
+    listens: {
+        "catalog.product.removed": defineListener<Inside>()(
+            z.object({ id: z.uuid(), shopId: z.string() }),
+            {
+            describe: "Lets go of every hold on a product that no longer exists.",
+            handle: async (gone, ctx) =>
+            {
+                const acting = ctx.forScope(gone.shopId);
+                const dropped = await acting.services.orders.dropFor(gone.id);
+
+                if (dropped > 0)
+                {
+                    ctx.log.info("holds dropped with their product", { product: gone.id, dropped });
+                }
+            },
+        },
+        ),
+    },
+
+    participates: {
+        "catalog.product.before-list": defineParticipant<Inside>()(
+            z.object({ id: z.uuid(), name: z.string(), cents: z.number() }),
+            {
+                describe: "Refuses a product priced at nothing, which no order could charge for.",
+                handle: (asked) =>
+                {
+                    return asked.cents === 0
+                        ? "A product sold for nothing cannot be ordered."
+                        : undefined;
+                },
+            },
+        ),
+    },
+
+    commands: {
+        "orders.release-holds": defineCommand<Inside>()({
+            describe: "Lets go of one shop's reservations whose moment has passed.",
+
+            // The shop travels in the payload, and nothing else decides which
+            // rows are touched: a scheduled command has no caller to scope by,
+            // and without this the sweep would reach every shop at once.
+            // It stays ungated for that reason, so the payload is the boundary.
+            schema: z.object({ shopId: z.string().min(1) }),
+            run: async (given, ctx) =>
+            {
+                // forScope refuses a caller reaching for a shop that is not
+                // theirs, and lets the scheduler through because it has none.
+                const mine = ctx.forScope(given.shopId);
+                const released = await mine.services.orders.releaseHolds();
+
+                if (released > 0)
+                {
+                    ctx.log.info("holds released", { released, shopId: given.shopId });
+                }
+            },
+        }),
+    },
+
+    setup: (ctx) =>
+    {
+        // Built once and held: a service is made per request, so counting
+        // there would start again on every one.
+        ctx.owns(new Reserving());
+
+        ctx.log.info("orders ready", { holdSeconds: ctx.config.holdSeconds });
+    },
+
+    teardown: (ctx) =>
+    {
+        const held = ctx.owned<Reserving>();
+
+        ctx.log.info("orders stopped", { reserved: held?.count() ?? 0 });
+    },
+});
+
+==> src/plugins/orders/usage.md
+
+# orders
+
+## Description
+
+Holding a product until somebody pays. The second plugin: what `catalog` shows
+alone, this shows across a boundary and across time.
+
+## Usage
+
+```ts
+import { Orders } from "@plugins/orders";
+
+const order = await Orders.reserve(ctx, productId);
+```
+
+`orders.read` lists; `orders.write` holds, pays and cancels. Every route
+answers only the caller's shop.
+
+## What it demonstrates
+
+- **dependsOn** — `catalog` is declared, so `Catalog.get` is reachable. The
+  price comes from the plugin that owns it, never from the caller.
+- **commands.later** — a hold is released by a command asked for inside the
+  transaction that made it, so a reservation that rolled back releases
+  nothing. Expiry is a moment on the row that reads ignore.
+- **owns** — a counter built once in `setup` and read in `teardown`. A
+  service is made per request, so one counting there counts to one every time.
+  It holds no secret: what signs a call is added by the project's dialler,
+  because a key a plugin can read is a key its config can log.
+- **listens** — a product removed lets go of every hold on it.
+- **participates** — a product priced at nothing is refused, from another
+  plugin's hook.
+- **outbound** — `ctx.fetch` carries the charge, refusing any host this
+  plugin did not declare. Dialled outside the transaction: holding SQLite's
+  one writer while somebody else's server thinks would stop every write.
+- **Their answer is input** — parsed with a schema, never believed.
+
+## Refuses
+
+- No caller id: 401. A missing permission: 403, naming none.
+- No shop on the caller: 403, never a default shop.
+- Another shop's order: 404, as for one that never existed.
+- A product not listed: 409. A hold already gone: 409.
+- A payment the partner refused: 402, and the order stays held.
+- An answer from them we cannot read: 502.
+
+==> src/plugins/orders/index.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Order } from "./schemas/Order";
+import type { OrderPage } from "./schemas/OrderPage";
+import type { Services } from "./types/Services";
+
+export const Orders = {
+    services: (ctx: Context): Services =>
+    {
+        return ctx.use<Services>("orders");
+    },
+
+    list: (ctx: Context): Promise<OrderPage> =>
+    {
+        return Orders.services(ctx).orders.list();
+    },
+
+    reserve: (ctx: Context, productId: string): Promise<Order> =>
+    {
+        return Orders.services(ctx).orders.reserve(productId);
+    },
+};
+
+export type { Order as ShopOrder } from "./schemas/Order";
+export type { OrderPage as ShopOrderPage } from "./schemas/OrderPage";
+
+==> src/plugins/orders/migrations/0001-create-orders.sql
+
+CREATE TABLE orders_orders (
+    id          TEXT PRIMARY KEY,
+    shop_id     TEXT NOT NULL,
+    product_id  TEXT NOT NULL,
+    cents       INTEGER NOT NULL CHECK (cents >= 0),
+    status      TEXT NOT NULL,
+    holds_until INTEGER NOT NULL,
+    created_at  TEXT NOT NULL,
+    sequence    INTEGER NOT NULL
+);
+
+CREATE INDEX orders_orders_shop ON orders_orders (shop_id, sequence);
+
+==> src/plugins/orders/routes/orders.ts
+
+import { Answered, defineRoute } from "@onetype/stack-api-kit";
+import { z } from "zod";
+
+import { Order } from "../schemas/Order";
+import { OrderPage } from "../schemas/OrderPage";
+
+import type { Endpoint } from "@onetype/stack-api-kit";
+import type { Inside } from "../types/Context";
+
+const route = defineRoute<Inside>();
+
+export const orderRoutes: readonly Endpoint<Inside>[] = [
+    route({
+        method: "GET",
+        path: "/orders",
+        describe: "Lists this shop's orders, and how many are still held.",
+        requires: ["orders.read"],
+        input: z.object({}),
+        output: OrderPage.schema,
+        limit: { requests: 120, seconds: 60 },
+        handle: (_input, ctx) =>
+        {
+            return ctx.services.orders.list();
+        },
+    }),
+    route({
+        method: "POST",
+        path: "/orders",
+        describe: "Holds a product for a while.",
+        requires: ["orders.write"],
+        input: z.object({ productId: z.uuid() }),
+        output: Order.schema,
+        limit: { requests: 30, seconds: 60 },
+        handle: async (input, ctx) =>
+        {
+            const order = await ctx.services.orders.reserve(input.productId);
+
+            return new Answered(201, order, { location: `/orders/${order.id}` });
+        },
+    }),
+    route({
+        method: "POST",
+        path: "/orders/:id/pay",
+        describe: "Takes payment for a held order.",
+        requires: ["orders.write"],
+        input: z.object({ id: z.uuid() }),
+        output: Order.schema,
+        limit: { requests: 30, seconds: 60 },
+        handle: (input, ctx) =>
+        {
+            return ctx.services.orders.pay(input.id);
+        },
+    }),
+    route({
+        method: "DELETE",
+        path: "/orders/:id",
+        describe: "Lets go of a held order.",
+        requires: ["orders.write"],
+        input: z.object({ id: z.uuid() }),
+        output: z.object({ cancelled: z.literal(true) }),
+        limit: { requests: 30, seconds: 60 },
+        handle: async (input, ctx) =>
+        {
+            await ctx.services.orders.cancel(input.id);
+
+            return { cancelled: true as const };
+        },
+    }),
+];
+
+==> src/plugins/orders/schemas/Charge.ts
+
+import { z } from "zod";
+
+export const Charge = {
+    schema: z.object({
+        paid: z.boolean(),
+        reference: z.string().min(1).max(200),
+    }),
+};
+
+export type Charge = z.infer<typeof Charge.schema>;
+
+==> src/plugins/orders/schemas/Config.ts
+
+import { z } from "zod";
+
+export const Config = {
+    schema: z.object({
+        holdSeconds: z.number().int().positive().default(900),
+
+        payments: z.url().startsWith("https://").optional(),
+
+    }),
+};
+
+export type Config = z.infer<typeof Config.schema>;
+
+==> src/plugins/orders/schemas/Order.ts
+
+import { z } from "zod";
+
+import { Status } from "./Status";
+
+export const Order = {
+    schema: z.object({
+        id: z.uuid(),
+        productId: z.uuid(),
+        cents: z.number().int().nonnegative(),
+        status: Status.schema,
+        createdAt: z.iso.datetime(),
+    }),
+};
+
+export type Order = z.infer<typeof Order.schema>;
+
+==> src/plugins/orders/schemas/OrderPage.ts
+
+import { z } from "zod";
+
+import { Order } from "./Order";
+
+export const OrderPage = {
+    schema: z.object({
+        orders: z.array(Order.schema),
+        reserved: z.number().int().nonnegative(),
+    }),
+};
+
+export type OrderPage = z.infer<typeof OrderPage.schema>;
+
+==> src/plugins/orders/schemas/Status.ts
+
+import { z } from "zod";
+
+export const Status = {
+    schema: z.enum(["reserved", "paid", "expired", "cancelled"]),
+};
+
+export type Status = z.infer<typeof Status.schema>;
+
+==> src/plugins/orders/services/orders.ts
+
+import { and, count, eq, gt, lte, max } from "drizzle-orm";
+import { Catalog } from "@plugins/catalog";
+import { Refusal } from "@onetype/stack-api-kit";
+
+import { Charge } from "../schemas/Charge";
+import type { Reserving } from "./Reserving";
+import { orders } from "../tables/orders";
+
+import type { Inside } from "../types/Context";
+import type { Order } from "../schemas/Order";
+import type { OrderPage } from "../schemas/OrderPage";
+import type { SQL } from "drizzle-orm";
+import type { Status } from "../schemas/Status";
+
+type Row = typeof orders.$inferSelect;
+
+export class OrdersService
+{
+    readonly #ctx: Inside;
+
+    constructor(ctx: Inside)
+    {
+        this.#ctx = ctx;
+    }
+
+    async list(): Promise<OrderPage>
+    {
+        const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
+
+        // A hold past its moment is one a read ignores, whether or not the
+        // sweep has been by yet.
+        const [held] = await this.#ctx.db
+            .select({ total: count() })
+            .from(orders)
+            .where(and(this.#scoped("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
+
+        return {
+            orders: found.map((row) => this.#shown(row)),
+            reserved: held?.total ?? 0,
+        };
+    }
+
+    async get(id: string): Promise<Order>
+    {
+        const [row] = await this.#ctx.db.select().from(orders).where(this.#just(id));
+
+        if (row === undefined)
+        {
+            throw this.#missing();
+        }
+
+        return this.#shown(row);
+    }
+
+    async reserve(productId: string): Promise<Order>
+    {
+        const product = await Catalog.get(this.#ctx, productId);
+
+        if (product.status !== "listed")
+        {
+            throw new Refusal(409, "NOT_FOR_SALE", "That product is not for sale.");
+        }
+
+        const holdsUntil = this.#ctx.now() + this.#ctx.config.holdSeconds * 1000;
+
+        return this.#ctx.tx(async (inside) =>
+        {
+            // Asked again inside the transaction. The answer above is from
+            // before it opened, and a product withdrawn in that gap would
+            // otherwise be reserved anyway, and then paid for.
+            const still = await Catalog.get(inside, productId);
+
+            if (still.status !== "listed")
+            {
+                throw new Refusal(409, "NOT_FOR_SALE", "That product is not for sale.");
+            }
+
+            const [highest] = await inside.db
+                .select({ at: max(orders.sequence) })
+                .from(orders)
+                .where(this.#scoped());
+
+            const row = {
+                id: crypto.randomUUID(),
+                productId: product.id,
+                cents: product.cents,
+                status: "reserved",
+                holdsUntil,
+                createdAt: new Date(this.#ctx.now()).toISOString(),
+                sequence: (highest?.at ?? 0) + 1,
+                ...this.#ctx.stamped("orders"),
+            } as Row;
+
+            await inside.db.insert(orders).values(row);
+
+            // Asked for inside the transaction, so a reservation that rolls
+            // back is never released by a command about nothing.
+            inside.commands.later("orders.release-holds", { shopId: row.shopId }, this.#ctx.config.holdSeconds);
+
+            this.#ctx.owned<Reserving>()?.took();
+
+            inside.events.emit("orders.order.reserved", { id: row.id, shopId: row.shopId, productId: product.id });
+
+            return this.#shown(row);
+        });
+    }
+
+    async pay(id: string): Promise<Order>
+    {
+        const order = await this.get(id);
+
+        // Won in one statement, before the money moves: a second payer finds the
+        // row no longer reserved and is refused, rather than charging it again.
+        const [won] = await this.#ctx.write(() =>
+            this.#ctx.db
+                .update(orders)
+                .set({ status: "paid" })
+                .where(and(
+                    this.#just(id),
+                    eq(orders.status, "reserved"),
+                    gt(orders.holdsUntil, this.#ctx.now()),
+                ))
+                .returning());
+
+        if (won === undefined)
+        {
+            throw order.status === "reserved"
+                ? new Refusal(409, "HOLD_EXPIRED", "That reservation has expired.")
+                : new Refusal(409, "NOT_RESERVED", "That order is not waiting to be paid.");
+        }
+
+        try
+        {
+            await this.#charged(won.cents, won.id);
+        }
+        catch (cause)
+        {
+            // Put back only if it is still ours to put back: a sweep or a cancel
+            // that ran meanwhile decided, and a refused card does not undecide it.
+            await this.#ctx.write(() =>
+                this.#ctx.db
+                    .update(orders)
+                    .set({ status: "reserved" })
+                    .where(and(this.#just(id), eq(orders.status, "paid"), gt(orders.holdsUntil, this.#ctx.now()))));
+
+            throw cause;
+        }
+
+        return this.#ctx.tx(async (inside) =>
+        {
+            const [row] = await inside.db.select().from(orders).where(this.#just(id));
+
+            if (row === undefined)
+            {
+                throw this.#missing();
+            }
+
+            inside.events.emit("orders.order.paid", { id, shopId: row.shopId, cents: row.cents });
+
+            return this.#shown(row);
+        });
+    }
+
+    async cancel(id: string): Promise<void>
+    {
+        await this.#ctx.tx(async (inside) =>
+        {
+            const [row] = await inside.db
+                .update(orders)
+                .set({ status: "cancelled" })
+                .where(and(this.#just(id), eq(orders.status, "reserved")))
+                .returning();
+
+            if (row === undefined)
+            {
+                throw this.#missing();
+            }
+
+            inside.events.emit("orders.order.cancelled", { id, shopId: row.shopId });
+        });
+    }
+
+    async releaseHolds(): Promise<number>
+    {
+        return this.#ctx.tx(async (inside) =>
+        {
+            const gone = await inside.db
+                .update(orders)
+                .set({ status: "expired" })
+                .where(and(
+                    this.#scoped("reserved"),
+                    lte(orders.holdsUntil, this.#ctx.now()),
+                ))
+                .returning({ id: orders.id, shopId: orders.shopId });
+
+            for (const row of gone)
+            {
+                inside.events.emit("orders.order.expired", { id: row.id, shopId: row.shopId });
+            }
+
+            return gone.length;
+        });
+    }
+
+    async dropFor(productId: string): Promise<number>
+    {
+        const gone = await this.#ctx.write(() =>
+            this.#ctx.db
+                .update(orders)
+                .set({ status: "cancelled" })
+                .where(and(
+                    this.#scoped("reserved"),
+                    eq(orders.productId, productId),
+                ))
+                .returning({ id: orders.id }));
+
+        return gone.length;
+    }
+
+    async #charged(cents: number, reference: string): Promise<void>
+    {
+        const url = this.#ctx.config.payments;
+
+        if (url === undefined)
+        {
+            return;
+        }
+
+        const answer = await this.#ctx.fetch({
+            method: "POST",
+            url: `${url}/v1/charges`,
+
+            // The reference is ours and never changes between attempts, so a
+            // retry asks about the charge they already hold rather than
+            // taking the money twice.
+            body: { cents, reference },
+        });
+
+
+        const told = Charge.schema.safeParse(answer);
+
+        if (!told.success)
+        {
+            throw new Refusal(502, "PAYMENTS_UNREADABLE", "The payments service answered something we cannot read.");
+        }
+
+        if (!told.data.paid)
+        {
+            throw new Refusal(402, "PAYMENT_REFUSED", "That payment was refused.");
+        }
+    }
+
+    #scoped(status?: Status): SQL | undefined
+    {
+        const shop = this.#ctx.scoped<SQL>("orders");
+
+        return status === undefined ? shop : and(shop, eq(orders.status, status));
+    }
+
+    #just(id: string): SQL | undefined
+    {
+        return and(eq(orders.id, id), this.#scoped());
+    }
+
+    #missing(): Refusal
+    {
+        return new Refusal(404, "NOT_FOUND", "No such order.");
+    }
+
+    #shown(row: Row): Order
+    {
+        return {
+            id: row.id,
+            productId: row.productId,
+            cents: row.cents,
+            status: row.status as Status,
+            createdAt: row.createdAt,
+        };
+    }
+}
+
+==> src/plugins/orders/services/Reserving.ts
+
+export class Reserving
+{
+    #taken = 0;
+
+    took(): void
+    {
+        this.#taken += 1;
+    }
+
+    count(): number
+    {
+        return this.#taken;
+    }
+}
+
+==> src/plugins/orders/tables/orders.ts
+
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const orders = sqliteTable("orders_orders", {
+    id: text("id").primaryKey(),
+    shopId: text("shop_id").notNull(),
+    productId: text("product_id").notNull(),
+    cents: integer("cents").notNull(),
+    status: text("status").notNull(),
+
+    holdsUntil: integer("holds_until").notNull(),
+
+    createdAt: text("created_at").notNull(),
+    sequence: integer("sequence").notNull(),
+}, (table) => [
+    index("orders_orders_shop").on(table.shopId, table.sequence),
+]);
+
+==> src/plugins/orders/tests/crossings.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { caller, serving, type Serving } from "./serving";
+
+const PAYMENTS = "https://payments.example.test";
+
+let api: Serving;
+
+afterEach(async () =>
+{
+    await api.stop();
+});
+
+async function listed(cents = 2500): Promise<string>
+{
+    const made = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `A product ${crypto.randomUUID()}`, cents },
+        caller: caller(),
+    });
+
+    const product = made.body as { id: string };
+
+    await api.kernel.handle({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        input: { id: product.id, status: "listed" },
+        caller: caller(),
+    });
+
+    return product.id;
+}
+
+describe("the price comes from the plugin that owns it", () =>
+{
+    test("and never from the caller", async () =>
+    {
+        api = await serving();
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders",
+            input: { productId: await listed(4200) },
+            caller: caller(),
+        });
+
+        expect(answer.body).toMatchObject({ cents: 4200 });
+    });
+
+    test("so a product nobody listed cannot be ordered", async () =>
+    {
+        api = await serving();
+
+        const made = await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "Still a draft", cents: 100 },
+            caller: caller(),
+        });
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders",
+            input: { productId: (made.body as { id: string }).id },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(409);
+    });
+});
+
+describe("what it hears", () =>
+{
+    test("lets go of holds on a product that was removed", async () =>
+    {
+        api = await serving();
+
+        const product = await listed();
+
+        await api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product }, caller: caller() });
+
+        await api.kernel.handle({
+            method: "DELETE",
+            path: "/catalog/products/:id",
+            input: { id: product },
+            caller: caller(),
+        });
+
+        await api.settled();
+
+        const answer = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
+
+        expect(answer.body).toMatchObject({ reserved: 0 });
+        expect(api.kernel.events.failures()).toEqual([]);
+    });
+});
+
+describe("what it refuses in another plugin's hook", () =>
+{
+    test("a product priced at nothing", async () =>
+    {
+        api = await serving();
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/catalog/products",
+            input: { name: "Free thing", cents: 0 },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(409);
+        expect(JSON.stringify(answer.body)).toContain("sold for nothing");
+    });
+});
+
+describe("the partner it dials", () =>
+{
+    test("is charged what the product costs", async () =>
+    {
+        api = await serving({ payments: PAYMENTS }, undefined, () => ({ paid: true, reference: "r" }));
+
+        const made = await api.kernel.handle({
+            method: "POST",
+            path: "/orders",
+            input: { productId: await listed(1750) },
+            caller: caller(),
+        });
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders/:id/pay",
+            input: { id: (made.body as { id: string }).id },
+            caller: caller(),
+        });
+
+        expect(answer.body).toMatchObject({ status: "paid" });
+
+        expect(api.called()).toMatchObject([{ method: "POST", body: { cents: 1750 } }]);
+    });
+
+    test("and a refusal leaves the order unpaid", async () =>
+    {
+        api = await serving(
+            { payments: PAYMENTS },
+            undefined,
+            () => ({ paid: false, reference: "r" }),
+        );
+
+        const made = await api.kernel.handle({
+            method: "POST",
+            path: "/orders",
+            input: { productId: await listed() },
+            caller: caller(),
+        });
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders/:id/pay",
+            input: { id: (made.body as { id: string }).id },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(402);
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
+
+        expect(seen.body).toMatchObject({ reserved: 1 });
+    });
+});
+
+describe("what the partner says is input", () =>
+{
+    test("an answer we cannot read refuses the payment, rather than believing it", async () =>
+    {
+        api = await serving({ payments: PAYMENTS }, undefined, () => ({ ok: "sure" }));
+
+        const made = await api.kernel.handle({
+            method: "POST",
+            path: "/orders",
+            input: { productId: await listed() },
+            caller: caller(),
+        });
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders/:id/pay",
+            input: { id: (made.body as { id: string }).id },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(502);
+    });
+
+    test("a host the plugin never declared is refused before it is dialled", async () =>
+    {
+        api = await serving({ payments: "https://evil.test" });
+
+        const made = await api.kernel.handle({
+            method: "POST",
+            path: "/orders",
+            input: { productId: await listed() },
+            caller: caller(),
+        });
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders/:id/pay",
+            input: { id: (made.body as { id: string }).id },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(500);
+        expect(api.called()).toEqual([]);
+    });
+});
+
+==> src/plugins/orders/tests/holding.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { caller, serving, type Serving } from "./serving";
+
+let api: Serving;
+let clock = 1_700_000_000_000;
+
+afterEach(async () =>
+{
+    await api.stop();
+    clock = 1_700_000_000_000;
+});
+
+async function listed(who = caller()): Promise<string> 
+{
+    const made = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `A product ${crypto.randomUUID()}`, cents: 2500 },
+        caller: who,
+    });
+
+    const product = made.body as { id: string };
+
+    await api.kernel.handle({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        input: { id: product.id, status: "listed" },
+        caller: who,
+    });
+
+    return product.id;
+}
+
+async function reserved(who = caller()): Promise<{ id: string }>
+{
+    const answer = await api.kernel.handle({
+        method: "POST",
+        path: "/orders",
+        input: { productId: await listed(who) },
+        caller: who,
+    });
+
+    return answer.body as { id: string };
+}
+
+async function statusOf(id: string, who = caller()): Promise<string>
+{
+    const answer = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+    const page = answer.body as { orders: { id: string; status: string }[] };
+
+    return page.orders.find((one) => one.id === id)?.status ?? "gone";
+}
+
+describe("a hold", () =>
+{
+    test("stays while its moment has not passed", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const order = await reserved();
+
+        clock += 599_000;
+
+        await api.due();
+
+        expect(await statusOf(order.id)).toBe("reserved");
+    });
+
+    test("is let go once it has", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const order = await reserved();
+
+        clock += 601_000;
+
+        await api.due();
+        await api.settled();
+
+        expect(await statusOf(order.id)).toBe("expired");
+    });
+
+    test("cannot be paid for once it has expired", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const order = await reserved();
+
+        clock += 601_000;
+
+        const answer = await api.kernel.handle({
+            method: "POST",
+            path: "/orders/:id/pay",
+            input: { id: order.id },
+            caller: caller(),
+        });
+
+        expect(answer.status).toBe(409);
+    });
+});
+
+==> src/plugins/orders/tests/races.test.ts
+
+import { afterEach, describe, expect, test } from "vitest";
+
+import { caller, serving, type Serving } from "./serving";
+
+const PAYMENTS = "https://payments.example.test";
+
+let api: Serving;
+let charges = 0;
+let clock = 1_700_000_000_000;
+
+afterEach(async () =>
+{
+    await api.stop();
+    charges = 0;
+    clock = 1_700_000_000_000;
+});
+
+async function listed(who: ReturnType<typeof caller>): Promise<string>
+{
+    const made = await api.kernel.handle({
+        method: "POST",
+        path: "/catalog/products",
+        input: { name: `P ${crypto.randomUUID()}`, cents: 2500 },
+        caller: who,
+    });
+
+    const product = made.body as { id: string };
+
+    await api.kernel.handle({
+        method: "PATCH",
+        path: "/catalog/products/:id",
+        input: { id: product.id, status: "listed" },
+        caller: who,
+    });
+
+    return product.id;
+}
+
+async function reserved(who: ReturnType<typeof caller>): Promise<string>
+{
+    const held = await api.kernel.handle({
+        method: "POST",
+        path: "/orders",
+        input: { productId: await listed(who), quantity: 1 },
+        caller: who,
+    });
+
+    return (held.body as { id: string }).id;
+}
+
+function counting(): (call: { url: string }) => unknown
+{
+    return () =>
+    {
+        charges += 1;
+
+        return { paid: true, reference: "r" };
+    };
+}
+
+describe("an order paid from two places at once", () =>
+{
+    test("is charged once, whatever the timing", async () =>
+    {
+        api = await serving({ payments: PAYMENTS }, undefined, counting());
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        const pay = (): Promise<unknown> => api.kernel.handle({
+            method: "POST", path: "/orders/:id/pay", input: { id }, caller: who,
+        });
+
+        await Promise.all([pay(), pay()]);
+
+        expect(charges).toBe(1);
+    });
+
+    test("and cannot be paid after it was cancelled", async () =>
+    {
+        api = await serving({ payments: PAYMENTS }, undefined, counting());
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        await Promise.all([
+            api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who }),
+            api.kernel.handle({ method: "DELETE", path: "/orders/:id", input: { id }, caller: who }),
+        ]);
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+
+        expect(["paid", "cancelled"]).toContain(row?.status);
+        expect(charges).toBe(row?.status === "paid" ? 1 : 0);
+    });
+});
+
+describe("releasing holds that have run out", () =>
+{
+    test("leaves another shop's reservations alone", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const acme = caller("acme");
+        const other = caller("other", undefined, "22222222-2222-4222-8222-222222222222");
+
+        // Both are old enough. The sweep runs on schedule, once per shop, with
+        // nobody calling it.
+        await reserved(acme);
+        const theirs = await reserved(other);
+
+        clock += 601_000;
+
+        await api.due();
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
+        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === theirs);
+
+        expect(row?.status).toBe("expired");
+    });
+
+    test("and refuses a caller reaching for a shop that is not theirs", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        await expect(api.kernel.run("orders.release-holds", { shopId: "other" }, caller("acme"))).rejects.toThrow();
+        await expect(api.kernel.run("orders.release-holds", {}, caller("acme"))).rejects.toThrow();
+    });
+});
+
+describe("reserving a product", () =>
+{
+    test("refuses one taken off the shelves while the request was in flight", async () =>
+    {
+        api = await serving({ payments: PAYMENTS }, undefined, counting());
+
+        const who = caller("acme");
+        const product = await listed(who);
+
+        const [held] = await Promise.all([
+            api.kernel.handle({ method: "POST", path: "/orders", input: { productId: product, quantity: 1 }, caller: who }),
+            api.kernel.handle({ method: "PATCH", path: "/catalog/products/:id", input: { id: product, status: "withdrawn" }, caller: who }),
+        ]);
+
+        if (held.status !== 201)
+        {
+            return;
+        }
+
+        const id = (held.body as { id: string }).id;
+        const paid = await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+
+        expect(paid.status).not.toBe(201);
+    });
+});
+
+describe("a hold whose moment has passed", () =>
+{
+    test("is not counted as reserved, swept or not", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const who = caller("acme");
+
+        await reserved(who);
+
+        clock += 601_000;
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+
+        expect((seen.body as { reserved: number }).reserved).toBe(0);
+    });
+});
+
+describe("a card the bank refused", () =>
+{
+    test("does not put back a hold the sweep already let go of", async () =>
+    {
+        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
+        {
+            clock += 601_000;
+
+            throw new Error("the bank said no");
+        });
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+
+        expect(row?.status).not.toBe("reserved");
+    });
+});
+
+==> src/plugins/orders/tests/serving.ts
+
+import { booting, calling } from "@onetype/stack-api-kit/testing";
+import catalog from "@plugins/catalog/plugin";
+
+import orders from "../plugin";
+
+import type { Booted, Caller, Outbound } from "@onetype/stack-api-kit/testing";
+import type { Config } from "../schemas/Config";
+
+export type Serving = Booted;
+
+export function serving(
+    config: Partial<Config> = {},
+    now: () => number = () => 1_700_000_000_000,
+    answers: (call: Outbound) => unknown = () => ({ paid: true, reference: "r" }),
+): Promise<Serving>
+{
+    return booting({
+        plugins: [catalog, orders],
+        config: { orders: config },
+        schedule: true,
+        answers,
+        now,
+    });
+}
+
+export function caller(
+    shopId = "acme",
+    permissions: readonly string[] = ["catalog.read", "catalog.write", "orders.read", "orders.write"],
+    id = "11111111-1111-4111-8111-111111111111",
+): Caller
+{
+    return calling(permissions, id, { shopId });
+}
+
+==> src/plugins/orders/types/Context.ts
+
+import type { Context } from "@onetype/stack-api-kit";
+
+import type { Config } from "../schemas/Config";
+import type { Rows } from "./Rows";
+import type { Services } from "./Services";
+
+export type Inside = Context<Config, Services, Rows>;
+
+==> src/plugins/orders/types/Rows.ts
+
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+
+import type { orders } from "../tables/orders";
+
+export type Rows = BetterSQLite3Database<{ orders: typeof orders }>;
+
+==> src/plugins/orders/types/Services.ts
+
+import type { OrdersService } from "../services/orders";
+
+export type Services = {
+    orders: OrdersService;
+};

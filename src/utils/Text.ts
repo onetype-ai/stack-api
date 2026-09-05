@@ -15,26 +15,22 @@ class TextUtil
     }
 
     // NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name, and a shop
-    // sells both. What NFKD also caught is done on purpose below.
+    // sells both.
     same(raw: string): string
     {
-        return this.#confusable(this.#flattened(raw)).normalize("NFC");
+        return this.#flattened(raw).normalize("NFC");
     }
 
-    // A letter that draws like another is the same letter to a reader, and a
-    // second row nobody can tell from the first is how a listing is spoofed.
-    #confusable(flat: string): string
+    // A letter that draws like another is only useful beside letters from a
+    // different script. Folding them together would make "Рок" and "Pok" one
+    // product, so this answers which alphabets are in play and the caller
+    // decides.
+    alphabets(raw: string): number
     {
-        return flat
-            .replace(/[\uFF01-\uFF5E]/gu, (one) => String.fromCharCode(one.charCodeAt(0) - 0xFEE0))
-            .replace(/[абвгдезиклмнопрстуфхцѕјѐ]/gu, (one) => TextUtil.#latin.get(one) ?? one);
+        return [/\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u]
+            .filter((one) => one.test(raw))
+            .length;
     }
-
-    static #latin = new Map(Object.entries({
-        а: "a", б: "b", в: "b", г: "r", д: "d", е: "e", з: "3", и: "u", к: "k",
-        л: "n", м: "m", н: "h", о: "o", п: "n", р: "p", с: "c", т: "t", у: "y",
-        ф: "b", х: "x", ц: "u", ѕ: "s", ј: "j", ѐ: "e",
-    }));
 
     characters(raw: string): number
     {
@@ -48,10 +44,10 @@ class TextUtil
 
     visible(raw: string): string
     {
-        // Not every format character: a joiner holds an emoji family together
-        // and separates Persian and Hindi words, so removing it stores a
-        // different name than the one that was typed.
-        return raw.replace(/[\u00AD\u200B\u200E\u200F\u2028-\u202F\u2060-\u2064\u2066-\u206F\uFEFF]/gu, "");
+        // Every format character except the two joiners, which hold an emoji
+        // family together and separate Persian and Hindi words: removing those
+        // stores a different name than the one that was typed.
+        return raw.replace(/[\p{Cf}\u00AD\u200B\uFEFF]/gu, (one) => (one === "\u200C" || one === "\u200D" ? one : ""));
     }
 
     #flattened(raw: string): string

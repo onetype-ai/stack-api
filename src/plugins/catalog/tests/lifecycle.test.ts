@@ -44,11 +44,30 @@ describe("a product's life", () =>
         expect((await moved(id, "listed")).status).toBe(409);
     });
 
-    test("and nothing is withdrawn that was never for sale", async () =>
+    test("but a shop may drop a draft it never put up", async () =>
     {
         api = await serving();
 
-        expect((await moved(await made(), "withdrawn")).status).toBe(409);
+        expect((await moved(await made(), "withdrawn")).status).toBe(200);
+    });
+
+    test("and the command that drops every draft still works", async () =>
+    {
+        api = await serving();
+
+        await made();
+        await made();
+
+        await api.kernel.run("catalog.withdraw-drafts", {}, caller());
+
+        const seen = await api.kernel.handle({
+            method: "GET",
+            path: "/catalog/products",
+            input: { status: "draft" },
+            caller: caller(),
+        });
+
+        expect((seen.body as { products: unknown[] }).products).toEqual([]);
     });
 });
 

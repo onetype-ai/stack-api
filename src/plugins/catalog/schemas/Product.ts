@@ -37,6 +37,16 @@ export const Product = {
             );
         }
 
+        if (Text.alphabets(name) > 1)
+        {
+            throw new Refusal(
+                400,
+                "MIXED_ALPHABETS",
+                "A name is written in one alphabet. Mixing them is how one product is made to look like another.",
+                { name: "One alphabet." },
+            );
+        }
+
         if (length === 0 || length > LIMIT)
         {
             throw new Refusal(

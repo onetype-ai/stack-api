@@ -17,16 +17,35 @@ describe("two names that read differently", () =>
 
 describe("two names that read the same", () =>
 {
-    test("are one name across widths and alphabets", () =>
+    test("and a name mixing alphabets is refused, not quietly doubled", async () =>
     {
-        expect(Text.same("Ｗidget")).toBe(Text.same("Widget"));
-        expect(Text.same("Widgеt")).toBe(Text.same("Widget"));
+        const api = await serving();
+
+        const add = (name: string): Promise<{ status: number }> => api.kernel.handle({
+            method: "POST", path: "/catalog/products", input: { name, cents: 100 }, caller: caller(),
+        });
+
+        expect((await add("Widgеt")).status).toBe(400);
+        expect((await add("Sοap")).status).toBe(400);
+
+        // One alphabet is one shop's business, and two of them are two names.
+        expect((await add("Рок")).status).toBe(201);
+        expect((await add("Pok")).status).toBe(201);
+
+        await api.stop();
     });
 
     test("and a joiner that holds a word together is kept", () =>
     {
         expect(Text.visible("👨‍👩‍👧")).toBe("👨‍👩‍👧");
         expect(Text.visible("می‌رود")).toBe("می‌رود");
+        expect(Text.visible("100 km")).toBe("100 km");
+    });
+
+    test("whatever the character that hid it", () =>
+    {
+        expect(Text.same("Wid؜get")).toBe(Text.same("Widget"));
+        expect(Text.same("Wid\u{E0061}get")).toBe(Text.same("Widget"));
     });
 
     test("are the same name, however they were typed", () =>

@@ -149,7 +149,7 @@ export class ProductsService
     // What a product may become next. Nothing returns from withdrawn: a shop
     // that wants it back lists it again as a new one.
     static #next: Readonly<Record<Status, readonly Status[]>> = {
-        draft: ["listed"],
+        draft: ["listed", "withdrawn"],
         listed: ["withdrawn"],
         withdrawn: [],
     };

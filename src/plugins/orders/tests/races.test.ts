@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test } from "vitest";
 
+import { eq } from "drizzle-orm";
+
+import { orders } from "../tables/orders";
+
 import { caller, serving, type Serving } from "./serving";
+
+import type { Inside } from "../types/Context";
 
 const PAYMENTS = "https://payments.example.test";
 
@@ -189,9 +195,50 @@ describe("a card the bank refused", () =>
 
         await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
+        // Read from the row itself: what a shop is shown hides an expired hold,
+        // which would hide a row left saying paid.
+        const inside = api.kernel.context("orders", who) as unknown as Inside;
+        const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
+
+        expect(row?.status).toBe("expired");
+    });
+
+    test("and leaves nothing marked paid that nobody was charged for", async () =>
+    {
+        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
+        {
+            charges += 1;
+
+            throw new Error("the bank said no");
+        });
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+
         const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
         const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
 
-        expect(row?.status).not.toBe("reserved");
+        expect(row?.status).toBe("reserved");
+    });
+});
+
+describe("what a shop is shown", () =>
+{
+    test("says the same thing in the count and in the rows", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        clock += 601_000;
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const answer = seen.body as { reserved: number; orders: { id: string; status: string }[] };
+        const row = answer.orders.find((one) => one.id === id);
+
+        expect([answer.reserved, row?.status]).toEqual([0, "expired"]);
     });
 });
