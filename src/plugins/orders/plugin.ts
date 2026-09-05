@@ -114,7 +114,10 @@ export default definePlugin.over<Rows, Services>()("orders", {
             schema: z.object({ shopId: z.string().min(1) }),
             run: async (given, ctx) =>
             {
-                const released = await ctx.services.orders.releaseHolds(given.shopId);
+                // forScope refuses a caller reaching for a shop that is not
+                // theirs, and lets the scheduler through because it has none.
+                const mine = ctx.forScope(given.shopId);
+                const released = await mine.services.orders.releaseHolds();
 
                 if (released > 0)
                 {

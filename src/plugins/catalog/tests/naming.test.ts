@@ -17,6 +17,18 @@ describe("two names that read differently", () =>
 
 describe("two names that read the same", () =>
 {
+    test("are one name across widths and alphabets", () =>
+    {
+        expect(Text.same("Ｗidget")).toBe(Text.same("Widget"));
+        expect(Text.same("Widgеt")).toBe(Text.same("Widget"));
+    });
+
+    test("and a joiner that holds a word together is kept", () =>
+    {
+        expect(Text.visible("👨‍👩‍👧")).toBe("👨‍👩‍👧");
+        expect(Text.visible("می‌رود")).toBe("می‌رود");
+    });
+
     test("are the same name, however they were typed", () =>
     {
         expect(Text.same("Wid​get")).toBe(Text.same("Widget"));

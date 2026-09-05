@@ -105,28 +105,27 @@ describe("releasing holds that have run out", () =>
         const acme = caller("acme");
         const other = caller("other", undefined, "22222222-2222-4222-8222-222222222222");
 
-        // Both are old enough, but only acme is asking.
+        // Both are old enough. The sweep runs on schedule, once per shop, with
+        // nobody calling it.
         await reserved(acme);
         const theirs = await reserved(other);
 
         clock += 601_000;
 
-        await api.kernel.run("orders.release-holds", { shopId: "acme" }, acme);
+        await api.due();
 
         const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
         const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === theirs);
 
-        expect(row?.status).toBe("reserved");
+        expect(row?.status).toBe("expired");
     });
 
-    // The command is ungated so the scheduler can run it, which makes the
-    // payload the only thing deciding what it touches.
-    test("and refuses to run without a shop to sweep", async () =>
+    test("and refuses a caller reaching for a shop that is not theirs", async () =>
     {
         api = await serving({ holdSeconds: 600 }, () => clock);
 
+        await expect(api.kernel.run("orders.release-holds", { shopId: "other" }, caller("acme"))).rejects.toThrow();
         await expect(api.kernel.run("orders.release-holds", {}, caller("acme"))).rejects.toThrow();
-        await expect(api.kernel.run("orders.release-holds", { shopId: "" }, caller("acme"))).rejects.toThrow();
     });
 });
 
@@ -153,5 +152,46 @@ describe("reserving a product", () =>
         const paid = await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
 
         expect(paid.status).not.toBe(201);
+    });
+});
+
+describe("a hold whose moment has passed", () =>
+{
+    test("is not counted as reserved, swept or not", async () =>
+    {
+        api = await serving({ holdSeconds: 600 }, () => clock);
+
+        const who = caller("acme");
+
+        await reserved(who);
+
+        clock += 601_000;
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+
+        expect((seen.body as { reserved: number }).reserved).toBe(0);
+    });
+});
+
+describe("a card the bank refused", () =>
+{
+    test("does not put back a hold the sweep already let go of", async () =>
+    {
+        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, () =>
+        {
+            clock += 601_000;
+
+            throw new Error("the bank said no");
+        });
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        await api.kernel.handle({ method: "POST", path: "/orders/:id/pay", input: { id }, caller: who });
+
+        const seen = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: who });
+        const row = (seen.body as { orders: { id: string; status: string }[] }).orders.find((one) => one.id === id);
+
+        expect(row?.status).not.toBe("reserved");
     });
 });

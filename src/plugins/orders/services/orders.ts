@@ -27,10 +27,12 @@ export class OrdersService
     {
         const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
 
+        // A hold past its moment is one a read ignores, whether or not the
+        // sweep has been by yet.
         const [held] = await this.#ctx.db
             .select({ total: count() })
             .from(orders)
-            .where(and(this.#scoped("reserved")));
+            .where(and(this.#scoped("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
 
         return {
             orders: found.map((row) => this.#shown(row)),
@@ -133,10 +135,13 @@ export class OrdersService
         }
         catch (cause)
         {
-            // Put back where it was, or a refused card leaves an order marked
-            // paid that nobody paid for.
+            // Put back only if it is still ours to put back: a sweep or a cancel
+            // that ran meanwhile decided, and a refused card does not undecide it.
             await this.#ctx.write(() =>
-                this.#ctx.db.update(orders).set({ status: "reserved" }).where(this.#just(id)));
+                this.#ctx.db
+                    .update(orders)
+                    .set({ status: "reserved" })
+                    .where(and(this.#just(id), eq(orders.status, "paid"), gt(orders.holdsUntil, this.#ctx.now()))));
 
             throw cause;
         }
@@ -175,7 +180,7 @@ export class OrdersService
         });
     }
 
-    async releaseHolds(shopId: string): Promise<number>
+    async releaseHolds(): Promise<number>
     {
         return this.#ctx.tx(async (inside) =>
         {
@@ -183,8 +188,7 @@ export class OrdersService
                 .update(orders)
                 .set({ status: "expired" })
                 .where(and(
-                    eq(orders.shopId, shopId),
-                    eq(orders.status, "reserved"),
+                    this.#scoped("reserved"),
                     lte(orders.holdsUntil, this.#ctx.now()),
                 ))
                 .returning({ id: orders.id, shopId: orders.shopId });
