@@ -242,3 +242,56 @@ describe("what a shop is shown", () =>
         expect([answer.reserved, row?.status]).toEqual([0, "expired"]);
     });
 });
+
+describe("a slow refusal", () =>
+{
+    test("does not rewind a payment somebody else completed", async () =>
+    {
+        let hold: (() => void) | undefined;
+        const slow = new Promise<void>((keep) => { hold = keep; });
+
+        let first = true;
+
+        api = await serving({ payments: PAYMENTS, holdSeconds: 600 }, () => clock, async () =>
+        {
+            if (first)
+            {
+                first = false;
+
+                await slow;
+
+                throw new Error("the bank said no, eventually");
+            }
+
+            charges += 1;
+
+            return { paid: true, reference: "r" };
+        });
+
+        const who = caller("acme");
+        const id = await reserved(who);
+
+        const pay = (): Promise<{ status: number }> => api.kernel.handle({
+            method: "POST", path: "/orders/:id/pay", input: { id }, caller: who,
+        });
+
+        const slowly = pay();
+
+        await new Promise((settle) => setTimeout(settle, 5));
+
+        // The first payer is still waiting on the bank. Put the order back the
+        // way a compensation would, so a second payer can win it.
+        const inside = api.kernel.context("orders", who) as unknown as Inside;
+
+        await inside.db.update(orders).set({ status: "reserved", holdsUntil: clock + 600_000 }).where(eq(orders.id, id));
+
+        const quickly = await pay();
+
+        hold?.();
+        await slowly;
+
+        const [row] = await inside.db.select().from(orders).where(eq(orders.id, id));
+
+        expect([quickly.status, row?.status, charges]).toEqual([201, "paid", 1]);
+    });
+});

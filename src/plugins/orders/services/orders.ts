@@ -112,12 +112,14 @@ export class OrdersService
     {
         const order = await this.get(id);
 
+        const attempt = crypto.randomUUID();
+
         // Won in one statement, before the money moves: a second payer finds the
         // row no longer reserved and is refused, rather than charging it again.
         const [won] = await this.#ctx.write(() =>
             this.#ctx.db
                 .update(orders)
-                .set({ status: "paid" })
+                .set({ status: "paid", paying: attempt })
                 .where(and(
                     this.#just(id),
                     eq(orders.status, "reserved"),
@@ -138,17 +140,19 @@ export class OrdersService
         }
         catch (cause)
         {
-            // Only the row this call marked paid, and back to what the clock
-            // says it is: expired if the moment passed while the bank thought
-            // about it, or nothing would ever move it again.
+            // Only the attempt this call made. Status alone would let a slow
+            // refusal rewind a payment somebody else already completed.
             await this.#ctx.write(() =>
                 this.#ctx.db
                     .update(orders)
-                    .set({ status: won.holdsUntil > this.#ctx.now() ? "reserved" : "expired" })
-                    .where(and(this.#just(id), eq(orders.status, "paid"))));
+                    .set({ status: won.holdsUntil > this.#ctx.now() ? "reserved" : "expired", paying: null })
+                    .where(and(this.#just(id), eq(orders.paying, attempt))));
 
             throw cause;
         }
+
+        await this.#ctx.write(() =>
+            this.#ctx.db.update(orders).set({ paying: null }).where(and(this.#just(id), eq(orders.paying, attempt))));
 
         return this.#ctx.tx(async (inside) =>
         {
