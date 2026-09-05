@@ -41,21 +41,21 @@ export class PhotosService
 
         // The schema says what a url is, and a service is reached without a
         // route, so it is what says no rather than the edge above it.
-        const asked = Photo.schema.shape.url.safeParse(url);
+        const checked = Photo.schema.shape.url.safeParse(url);
 
-        if (!asked.success)
+        if (!checked.success)
         {
             throw new Refusal(400, "INVALID_URL", "A photo needs a url that a browser could fetch.");
         }
 
         return this.#ctx.tx(async (inside) =>
         {
-            const [held] = await inside.db
+            const [counted] = await inside.db
                 .select({ many: count() })
                 .from(photos)
                 .where(and(eq(photos.productId, productId), this.#scoped()));
 
-            if ((held?.many ?? 0) >= PhotosService.#most)
+            if ((counted?.many ?? 0) >= PhotosService.#most)
             {
                 throw new Refusal(409, "TOO_MANY", `A product carries at most ${String(PhotosService.#most)} photos.`);
             }
@@ -68,7 +68,7 @@ export class PhotosService
             const row = {
                 id: crypto.randomUUID(),
                 productId,
-                url: asked.data,
+                url: checked.data,
                 position: (highest?.at ?? -1) + 1,
 
                 // This table's stamp, not the product's. Each scoped table
@@ -84,12 +84,12 @@ export class PhotosService
 
     async dropFor(productId: string): Promise<number>
     {
-        const gone = await this.#ctx.db
+        const removed = await this.#ctx.db
             .delete(photos)
             .where(and(eq(photos.productId, productId), this.#scoped()))
             .returning({ id: photos.id });
 
-        return gone.length;
+        return removed.length;
     }
 
     async #owned(productId: string): Promise<void>

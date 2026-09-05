@@ -138,8 +138,8 @@ export default definePlugin.over<Rows, Services>()("orders", {
 
     teardown: (ctx) =>
     {
-        const held = ctx.owned<Reserving>();
+        const counter = ctx.owned<Reserving>();
 
-        ctx.log.info("orders stopped", { reserved: held?.count() ?? 0 });
+        ctx.log.info("orders stopped", { reserved: counter?.count() ?? 0 });
     },
 });

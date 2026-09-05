@@ -77,10 +77,10 @@ export default definePlugin.over<Rows, Services>()("catalog", {
             describe: "Refuses a shop that already holds as many products as its config allows.",
             handle: async (_asked, ctx) =>
             {
-                const held = await ctx.services.products.countMine();
+                const many = await ctx.services.products.countMine();
 
-                return held >= ctx.config.maxPerShop
-                    ? `This shop already holds ${String(held)} products, which is the most it may have.`
+                return many >= ctx.config.maxPerShop
+                    ? `This shop already holds ${String(many)} products, which is the most it may have.`
                     : undefined;
             },
         }),

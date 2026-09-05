@@ -11,7 +11,7 @@ class TextUtil
     {
         return this.#flattened(raw)
             .replace(/\p{Diacritic}/gu, "")
-            .replace(/[øđłħŧƀɖƶəæœßþðŋı]/gu, (one) => this.#stroked.get(one) ?? one);
+            .replace(/[øđłħŧƀɖƶəæœßþðŋı]/gu, (letter) => this.#stroked.get(letter) ?? letter);
     }
 
     // NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name, and a shop
@@ -19,7 +19,7 @@ class TextUtil
     same(raw: string): string
     {
         return this.#flattened(raw)
-            .replace(/[\uFB00-\uFB06]/gu, (one) => TextUtil.#tied.get(one) ?? one)
+            .replace(/[\uFB00-\uFB06]/gu, (tie) => TextUtil.#tied.get(tie) ?? tie)
             .normalize("NFC");
     }
 
@@ -35,7 +35,7 @@ class TextUtil
     {
         return this.visible(raw).split(/\s+/u).some((word) =>
         {
-            return TextUtil.#alphabets.filter((one) => one.test(word)).length > 1;
+            return TextUtil.#alphabets.filter((alphabet) => alphabet.test(word)).length > 1;
         });
     }
 
@@ -60,7 +60,7 @@ class TextUtil
         // Every format character except the two joiners, which hold an emoji
         // family together and separate Persian and Hindi words: removing those
         // stores a different name than the one that was typed.
-        return raw.replace(/[\p{Cf}\u00AD\u200B\uFEFF]/gu, (one) => (one === "\u200C" || one === "\u200D" ? one : ""));
+        return raw.replace(/[\p{Cf}\u00AD\u200B\uFEFF]/gu, (mark) => (mark === "\u200C" || mark === "\u200D" ? mark : ""));
     }
 
     #flattened(raw: string): string

@@ -6,7 +6,7 @@ export const Photo = {
         // z.url() takes "javascript:alert(1)": it is a url, and a browser runs
         // it. A picture is fetched, so only the schemes that fetch one.
         url: z.url().refine(
-            (one) => one.startsWith("https://") || one.startsWith("http://"),
+            (url) => url.startsWith("https://") || url.startsWith("http://"),
             "A photo is fetched over http or https.",
         ).max(2000),
         position: z.number().int().nonnegative(),

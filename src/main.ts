@@ -17,9 +17,9 @@ class ApiRunner
     {
         return (c: { req: { header: (name: string) => string | undefined } }): string =>
         {
-            const said = behindProxy ? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
+            const forwarded = behindProxy ? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
 
-            return said !== undefined && said !== "" ? said : "anonymous";
+            return forwarded !== undefined && forwarded !== "" ? forwarded : "anonymous";
         };
     }
 
@@ -41,9 +41,8 @@ class ApiRunner
             log,
         });
 
-        // Node kills the process on an unhandled rejection, and the default
-        // report is not a log line: the one message explaining the death would
-        // not reach a collector that reads them.
+        // Node's own report is not a log line, so a collector reading them
+        // would miss the one message explaining the death.
         process.on("unhandledRejection", (cause: unknown) =>
         {
             log.error("a promise was rejected and nobody was listening", { cause });
@@ -57,8 +56,7 @@ class ApiRunner
 
         const server = serve({ fetch: api.fetch, port: settings.port });
 
-        // Zero turns it off on purpose, which is why it is the one number here
-        // that may be zero.
+        // Zero turns it off on purpose.
         if (settings.watchSeconds > 0)
         {
             this.watching(api, log, settings.watchSeconds * 1000);
@@ -69,8 +67,7 @@ class ApiRunner
         this.closing(server, api, log);
     }
 
-    // Counted, not compared: stamps are milliseconds and a burst shares one,
-    // so anything after the last one read is new, however it is stamped.
+    // Counted, not compared: stamps are milliseconds and a burst shares one.
     unseen(failures: readonly Failure[], read: number): { fresh: readonly Failure[]; read: number }
     {
         return { fresh: failures.slice(read), read: failures.length };
@@ -84,8 +81,7 @@ class ApiRunner
         {
             const failures = api.kernel.events.failures();
 
-            // The kernel keeps a bounded ring, so a burst larger than it drops
-            // the oldest. Counting backwards is how that is noticed at all.
+            // The ring is bounded, so a burst larger than it drops the oldest.
             if (failures.length < read)
             {
                 read = 0;
@@ -99,8 +95,8 @@ class ApiRunner
             {
                 log.error("listeners failed", {
                     count: fresh.length,
-                    events: fresh.map((one) => `${one.plugin}:${one.event}`),
-                    why: [...new Set(fresh.map((one) => (one.error instanceof Error ? one.error.message : String(one.error))))].slice(0, 5),
+                    events: fresh.map((failure) => `${failure.plugin}:${failure.event}`),
+                    why: [...new Set(fresh.map((failure) => (failure.error instanceof Error ? failure.error.message : String(failure.error))))].slice(0, 5),
                 });
             }
         }, every);
@@ -116,8 +112,7 @@ class ApiRunner
 
         const close = (signal: string): void =>
         {
-            // Twice is one shutdown: Ctrl-C pressed again, or SIGTERM then
-            // SIGINT, would otherwise tear down concurrently.
+            // Twice is one shutdown, not two teardowns at once.
             if (closing)
             {
                 return;
@@ -127,9 +122,8 @@ class ApiRunner
 
             log.info("stopping", { signal });
 
-            // The outbox flushes and the database closes whether or not the
-            // socket ever lets go: one held connection would otherwise keep
-            // the callback from running at all.
+            // Not awaited: one held connection would keep the callback,
+            // and with it the outbox and the database, from ever running.
             server.close();
 
             const forced = setTimeout(() =>
@@ -143,9 +137,8 @@ class ApiRunner
             api.stop().then(
                 async () =>
                 {
-                    // The kernel is done, but a reply it produced may still be
-                    // on its way out. Leaving before it lands resets the socket,
-                    // so a caller who sent a write never learns whether it took.
+                    // A reply may still be on its way out, and leaving before
+                    // it lands resets the socket mid-write.
                     await new Promise((settle) => setTimeout(settle, this.draining));
 
                     process.exit(0);
@@ -167,8 +160,7 @@ class ApiRunner
         }
     }
 
-    // JSON like every other line, so a collector that parses them keeps the
-    // one message explaining why the process died.
+    // JSON like every other line, so a collector keeps it.
     failed(cause: unknown): void
     {
         process.stderr.write(Log.line("error", "the api did not start", { cause }));

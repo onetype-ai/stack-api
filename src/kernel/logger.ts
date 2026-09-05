@@ -11,15 +11,15 @@ export const Log = {
     // stringifying to {}.
     line: (level: Level, line: string, about?: Readonly<Record<string, unknown>>): string =>
     {
-        const said = { ...about, at: new Date().toISOString(), level, line };
+        const written = { ...about, at: new Date().toISOString(), level, line };
 
         try
         {
-            return `${JSON.stringify(said, Log.readable)}\n`;
+            return `${JSON.stringify(written, Log.readable)}\n`;
         }
         catch
         {
-            return `${JSON.stringify({ at: said.at, level, line, about: "unreadable" })}\n`;
+            return `${JSON.stringify({ at: written.at, level, line, about: "unreadable" })}\n`;
         }
     },
 

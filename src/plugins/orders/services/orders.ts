@@ -28,9 +28,8 @@ export class OrdersService
         const found = await this.#ctx.db.select().from(orders).where(this.#scoped());
         const now = this.#ctx.now();
 
-        // A hold past its moment is one a read ignores, whether or not the
-        // sweep has been by yet.
-        const [held] = await this.#ctx.db
+        // A hold past its moment reads as gone, swept or not.
+        const [counted] = await this.#ctx.db
             .select({ total: count() })
             .from(orders)
             .where(and(this.#scoped("reserved"), gt(orders.holdsUntil, this.#ctx.now())));
@@ -39,7 +38,7 @@ export class OrdersService
             orders: found.map((row) => this.#shown(
                 row.status === "reserved" && row.holdsUntil <= now ? { ...row, status: "expired" } : row,
             )),
-            reserved: held?.total ?? 0,
+            reserved: counted?.total ?? 0,
         };
     }
 
@@ -68,12 +67,11 @@ export class OrdersService
 
         return this.#ctx.tx(async (inside) =>
         {
-            // Asked again inside the transaction. The answer above is from
-            // before it opened, and a product withdrawn in that gap would
-            // otherwise be reserved anyway, and then paid for.
-            const still = await Catalog.get(inside, productId);
+            // Asked again inside the transaction: one withdrawn in the gap
+            // would otherwise be reserved anyway, and then paid for.
+            const current = await Catalog.get(inside, productId);
 
-            if (still.status !== "listed")
+            if (current.status !== "listed")
             {
                 throw new Refusal(409, "NOT_FOR_SALE", "That product is not for sale.");
             }
@@ -96,8 +94,8 @@ export class OrdersService
 
             await inside.db.insert(orders).values(row);
 
-            // Asked for inside the transaction, so a reservation that rolls
-            // back is never released by a command about nothing.
+            // Inside the transaction, so a rolled-back reservation schedules
+            // no release for an order that never existed.
             inside.commands.later("orders.release-holds", { shopId: row.shopId }, this.#ctx.config.holdSeconds);
 
             this.#ctx.owned<Reserving>()?.took();
@@ -114,9 +112,9 @@ export class OrdersService
 
         const attempt = crypto.randomUUID();
 
-        // Won in one statement, before the money moves: a second payer finds the
-        // row no longer reserved and is refused, rather than charging it again.
-        const [won] = await this.#ctx.write(() =>
+        // Claimed in one statement, before the money moves: a second payer
+        // finds it no longer reserved and is refused.
+        const [claimed] = await this.#ctx.write(() =>
             this.#ctx.db
                 .update(orders)
                 .set({ status: "paid", paying: attempt })
@@ -127,7 +125,7 @@ export class OrdersService
                 ))
                 .returning());
 
-        if (won === undefined)
+        if (claimed === undefined)
         {
             throw order.status === "reserved"
                 ? new Refusal(409, "HOLD_EXPIRED", "That reservation has expired.")
@@ -136,16 +134,16 @@ export class OrdersService
 
         try
         {
-            await this.#charged(won.cents, won.id);
+            await this.#charged(claimed.cents, claimed.id);
         }
         catch (cause)
         {
-            // Only the attempt this call made. Status alone would let a slow
-            // refusal rewind a payment somebody else already completed.
+            // Only this attempt: status alone would let a slow refusal rewind
+            // a payment somebody else completed.
             await this.#ctx.write(() =>
                 this.#ctx.db
                     .update(orders)
-                    .set({ status: won.holdsUntil > this.#ctx.now() ? "reserved" : "expired", paying: null })
+                    .set({ status: claimed.holdsUntil > this.#ctx.now() ? "reserved" : "expired", paying: null })
                     .where(and(this.#just(id), eq(orders.paying, attempt))));
 
             throw cause;
@@ -192,7 +190,7 @@ export class OrdersService
     {
         return this.#ctx.tx(async (inside) =>
         {
-            const gone = await inside.db
+            const expired = await inside.db
                 .update(orders)
                 .set({ status: "expired" })
                 .where(and(
@@ -201,18 +199,18 @@ export class OrdersService
                 ))
                 .returning({ id: orders.id, shopId: orders.shopId });
 
-            for (const row of gone)
+            for (const row of expired)
             {
                 inside.events.emit("orders.order.expired", { id: row.id, shopId: row.shopId });
             }
 
-            return gone.length;
+            return expired.length;
         });
     }
 
     async dropFor(productId: string): Promise<number>
     {
-        const gone = await this.#ctx.write(() =>
+        const cancelled = await this.#ctx.write(() =>
             this.#ctx.db
                 .update(orders)
                 .set({ status: "cancelled" })
@@ -222,7 +220,7 @@ export class OrdersService
                 ))
                 .returning({ id: orders.id }));
 
-        return gone.length;
+        return cancelled.length;
     }
 
     async #charged(cents: number, reference: string): Promise<void>
@@ -238,21 +236,20 @@ export class OrdersService
             method: "POST",
             url: `${url}/v1/charges`,
 
-            // The reference is ours and never changes between attempts, so a
-            // retry asks about the charge they already hold rather than
-            // taking the money twice.
+            // Ours and stable across attempts, so a retry asks about the
+            // charge they hold rather than taking the money twice.
             body: { cents, reference },
         });
 
 
-        const told = Charge.schema.safeParse(answer);
+        const charge = Charge.schema.safeParse(answer);
 
-        if (!told.success)
+        if (!charge.success)
         {
             throw new Refusal(502, "PAYMENTS_UNREADABLE", "The payments service answered something we cannot read.");
         }
 
-        if (!told.data.paid)
+        if (!charge.data.paid)
         {
             throw new Refusal(402, "PAYMENT_REFUSED", "That payment was refused.");
         }

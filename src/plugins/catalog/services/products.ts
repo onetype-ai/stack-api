@@ -27,17 +27,17 @@ export class ProductsService
         this.#ctx = ctx;
     }
 
-    async list(asked: Listing): Promise<ProductPage>
+    async list(query: Listing): Promise<ProductPage>
     {
         const found = await this.#ctx.db
             .select()
             .from(products)
-            .where(this.#scoped(asked.status));
+            .where(this.#scoped(query.status));
 
-        const collator = Ordering.by(asked.locale);
-        const sorted = [...found].sort((one, two) => collator.compare(one.name, two.name));
+        const collator = Ordering.by(query.locale);
+        const sorted = [...found].sort((first, second) => collator.compare(first.name, second.name));
 
-        const { page, after } = Paging.from(sorted, this.#ctx.config.pageSize, asked.after);
+        const { page, after } = Paging.from(sorted, this.#ctx.config.pageSize, query.after);
 
         return {
             products: page.map((row) => this.#shown(row)),
@@ -97,12 +97,12 @@ export class ProductsService
             // Counted again inside the transaction. The hook counts before it
             // opens, so ten arriving at once all read the same number and all
             // pass a limit only one of them should.
-            const [held] = await inside.db
+            const [counted] = await inside.db
                 .select({ many: count() })
                 .from(products)
                 .where(this.#scoped());
 
-            if ((held?.many ?? 0) >= this.#ctx.config.maxPerShop)
+            if ((counted?.many ?? 0) >= this.#ctx.config.maxPerShop)
             {
                 throw new Refusal(
                     409,
@@ -160,14 +160,14 @@ export class ProductsService
 
         return this.#ctx.tx(async (inside) =>
         {
-            const [held] = await inside.db.select().from(products).where(where);
+            const [before] = await inside.db.select().from(products).where(where);
 
-            if (held === undefined)
+            if (before === undefined)
             {
                 throw this.#missing();
             }
 
-            const now = Status.schema.parse(held.status);
+            const now = Status.schema.parse(before.status);
 
             if (!ProductsService.#next[now].includes(status))
             {
@@ -197,12 +197,12 @@ export class ProductsService
 
         await this.#ctx.tx(async (inside) =>
         {
-            const gone = await inside.db
+            const rows = await inside.db
                 .delete(products)
                 .where(where)
                 .returning({ id: products.id, shopId: products.shopId });
 
-            const removed = gone[0];
+            const removed = rows[0];
 
             if (removed === undefined)
             {

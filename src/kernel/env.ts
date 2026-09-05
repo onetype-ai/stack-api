@@ -57,7 +57,7 @@ export const Env = {
     {
         return (process.env[name] ?? "")
             .split(",")
-            .map((one) => one.trim())
+            .map((part) => part.trim())
             .filter(Boolean);
     },
 
