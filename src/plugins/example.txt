@@ -2518,7 +2518,7 @@ describe("what it hears", () =>
             caller: caller(),
         });
 
-        await api.settled();
+        await api.settle();
 
         const answer = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
 
@@ -2567,7 +2567,7 @@ describe("the partner it dials", () =>
 
         expect(answer.body).toMatchObject({ status: "paid" });
 
-        expect(api.called()).toMatchObject([{ method: "POST", body: { cents: 1750 } }]);
+        expect(api.outboundCalls()).toMatchObject([{ method: "POST", body: { cents: 1750 } }]);
     });
 
     test("and a refusal leaves the order unpaid", async () =>
@@ -2642,7 +2642,7 @@ describe("what the partner says is input", () =>
         });
 
         expect(answer.status).toBe(500);
-        expect(api.called()).toEqual([]);
+        expect(api.outboundCalls()).toEqual([]);
     });
 });
 
@@ -2726,7 +2726,7 @@ describe("a hold", () =>
         clock += 601_000;
 
         await api.due();
-        await api.settled();
+        await api.settle();
 
         expect(await statusOf(order.id)).toBe("expired");
     });
