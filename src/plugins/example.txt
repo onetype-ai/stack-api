@@ -2847,11 +2847,15 @@ describe("releasing holds that have run out", () =>
         expect(row?.status).toBe("expired");
     });
 
-    test("and refuses a caller reaching for a shop that is not otherOrder", async () =>
+    /* Any caller at all, not just one reaching across: the scope of a request
+       is already the caller's, so forScope has nothing left to decide. Both
+       shops are named to show the refusal does not depend on which. */
+    test("and refuses a caller, whichever shop it names", async () =>
     {
         api = await startApi({ holdSeconds: 600 }, () => clock);
 
         await expect(api.kernel.run("orders.release-holds", { shopId: "other" }, caller("acme"))).rejects.toThrow();
+        await expect(api.kernel.run("orders.release-holds", { shopId: "acme" }, caller("acme"))).rejects.toThrow();
         await expect(api.kernel.run("orders.release-holds", {}, caller("acme"))).rejects.toThrow();
     });
 });

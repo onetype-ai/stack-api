@@ -418,15 +418,15 @@ not own, or none at all.
 ```
 Request:       scoped / stamped, the claim decides.
 Listener:      forScope, the payload carries the scope.
-Public route:  scoped and stamped are 403. forScope WORKS.
+Public route:  scoped and stamped are 403. forScope works.
 ```
 
-The test is the caller, never the route. `forScope` throws only when
-`ctx.caller` exists, so a public route, a listener and a command all take it.
+The test is the caller, never the route. `forScope` throws whenever
+`ctx.caller` exists: run such a command with no caller, `kernel.run(name,
+input)`, or let the schedule run it.
 
-It is a knife: an unknown caller then chooses whose rows they land in. Use it
-where the action proves identity, signing in may, registering may not, and
-never let the body name the scope.
+A knife: an unknown caller chooses whose rows they land in. Use it where the
+action proves identity, and never let the body name the scope.
 
 ## Reading and writing
 
@@ -762,7 +762,8 @@ nobody hears. `settle()` waits for what one started. `due()` runs the
 schedule; `logLines` explains a 500.
 `kernel.context(plugin, caller)` reaches a service, `kernel.run(command,
 input, caller)` a command, `kernel.events.failures()` the listeners that
-threw. `kernel.routes()` is in `procedures/deploy.md`.
+threw. **Leave `caller` out for a command that uses `forScope`:** the scope of
+a request is the caller's, so any caller at all makes `forScope` refuse. `kernel.routes()` is in `procedures/deploy.md`.
 
 ==> #docs/stack.md
 
