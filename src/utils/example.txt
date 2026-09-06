@@ -1,4 +1,8 @@
-# Ordering, Text packed
+# EXAMPLES START HERE: Ordering, Text
+
+These are example utils, here to be read, not the application you are
+building. Take the mechanics from them and leave the domain alone: yours has
+its own nouns.
 
 Every file of these utils, one after another. A line starting
 with "==> " opens a file and names its path; everything until the next
@@ -99,3 +103,8 @@ class TextUtils
 }
 
 export const Text = new TextUtils();
+
+# EXAMPLES END HERE
+
+Everything above was an example. What you write goes in its own
+folder beside them, and nothing here is yours to edit.
