@@ -31,7 +31,7 @@ export const Log = {
         return typeof value === "bigint" ? value.toString() : value;
     },
 
-    at: (level: Level = "info"): Logger =>
+    forLevel: (level: Level = "info"): Logger =>
     {
         const write: Write = (at, line, about) =>
         {

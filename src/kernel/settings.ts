@@ -24,13 +24,13 @@ export const Settings = {
         return {
             port: Env.number("PORT", 3000, 1, 65_535),
             database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
-            outbox: Env.on("OUTBOX", false),
-            schedule: Env.on("SCHEDULE", false),
+            outbox: Env.flag("OUTBOX", false),
+            schedule: Env.flag("SCHEDULE", false),
             origins: Env.list("ORIGINS"),
             bodyBytes: Env.number("BODY_BYTES", 1_000_000, 1),
-            behindProxy: Env.on("BEHIND_PROXY", false),
+            behindProxy: Env.flag("BEHIND_PROXY", false),
             watchSeconds: Env.number("WATCH_SECONDS", 60),
-            logLevel: Env.one("LOG_LEVEL", Settings.levels, "info"),
+            logLevel: Env.oneOf("LOG_LEVEL", Settings.levels, "info"),
         };
     },
 };

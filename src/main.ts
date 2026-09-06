@@ -26,7 +26,7 @@ class Api
     async open(): Promise<void>
     {
         const settings = Settings.read();
-        const log = Log.at(settings.logLevel);
+        const log = Log.forLevel(settings.logLevel);
 
         const api = await start({
             plugins: await Plugins.discover(),

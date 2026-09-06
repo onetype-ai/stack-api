@@ -200,7 +200,7 @@ CREATE TABLE catalog_products (
     shop_id    TEXT NOT NULL,
     name       TEXT NOT NULL,
     searched   TEXT NOT NULL,
-    same       TEXT NOT NULL,
+    folded     TEXT NOT NULL,
     cents      INTEGER NOT NULL CHECK (cents >= 0),
     status     TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -211,7 +211,7 @@ CREATE INDEX catalog_products_shop ON catalog_products (shop_id, sequence);
 
 -- Two products in one shop cannot share a name, whatever case or accent the
 -- input played with: the folded form is what collides.
-CREATE UNIQUE INDEX catalog_products_named ON catalog_products (shop_id, same);
+CREATE UNIQUE INDEX catalog_products_named ON catalog_products (shop_id, folded);
 
 ==> src/plugins/catalog/migrations/0002-create-photos.sql
 
@@ -675,7 +675,7 @@ export class Products
     {
         const parsed = Product.parseName(name);
         const searched = Text.searched(parsed);
-        const same = Text.same(parsed);
+        const folded = Text.folded(parsed);
 
         const refusal = await this.#ctx.hooks.run("catalog.product.before-list", {
             id: crypto.randomUUID(),
@@ -714,7 +714,7 @@ export class Products
                 id: crypto.randomUUID(),
                 name: parsed,
                 searched,
-                same,
+                folded,
                 cents,
                 status: "draft",
                 createdAt: new Date(this.#ctx.now()).toISOString(),
@@ -873,7 +873,7 @@ export const products = sqliteTable("catalog_products", {
 
     searched: text("searched").notNull(),
 
-    same: text("same").notNull(),
+    folded: text("folded").notNull(),
 
     cents: integer("cents").notNull(),
 
@@ -883,7 +883,7 @@ export const products = sqliteTable("catalog_products", {
     sequence: integer("sequence").notNull(),
 }, (table) => [
     index("catalog_products_shop").on(table.shopId, table.sequence),
-    uniqueIndex("catalog_products_named").on(table.shopId, table.same),
+    uniqueIndex("catalog_products_named").on(table.shopId, table.folded),
 ]);
 
 ==> src/plugins/catalog/tests/lifecycle.test.ts
@@ -993,9 +993,9 @@ describe("two names that read differently", () =>
 {
     test("stay different, whatever they decompose into", () =>
     {
-        expect(Text.same("Model 2")).not.toBe(Text.same("Model ²"));
-        expect(Text.same("Mark IX")).not.toBe(Text.same("Mark Ⅸ"));
-        expect(Text.same("5 kg")).not.toBe(Text.same("5 ㎏"));
+        expect(Text.folded("Model 2")).not.toBe(Text.folded("Model ²"));
+        expect(Text.folded("Mark IX")).not.toBe(Text.folded("Mark Ⅸ"));
+        expect(Text.folded("5 kg")).not.toBe(Text.folded("5 ㎏"));
     });
 });
 
@@ -1032,14 +1032,14 @@ describe("two names that read the same", () =>
 
     test("and letters tied into one glyph are the letters they hold", () =>
     {
-        expect(Text.same("Oﬃce")).toBe(Text.same("Office"));
-        expect(Text.same("waﬄe")).toBe(Text.same("waffle"));
+        expect(Text.folded("Oﬃce")).toBe(Text.folded("Office"));
+        expect(Text.folded("waﬄe")).toBe(Text.folded("waffle"));
     });
 
     test("whatever the character that hid it", () =>
     {
-        expect(Text.same("Wid؜get")).toBe(Text.same("Widget"));
-        expect(Text.same("Wid\u{E0061}get")).toBe(Text.same("Widget"));
+        expect(Text.folded("Wid؜get")).toBe(Text.folded("Widget"));
+        expect(Text.folded("Wid\u{E0061}get")).toBe(Text.folded("Widget"));
     });
 
 
@@ -2379,16 +2379,16 @@ export class OrderBook
 
 export class ReservationCounter
 {
-    #taken = 0;
+    #reservations = 0;
 
     increment(): void
     {
-        this.#taken += 1;
+        this.#reservations += 1;
     }
 
     count(): number
     {
-        return this.#taken;
+        return this.#reservations;
     }
 }
 

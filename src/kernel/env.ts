@@ -58,7 +58,7 @@ export const Env = {
             .filter(Boolean);
     },
 
-    on: (name: string, fallback: boolean): boolean =>
+    flag: (name: string, fallback: boolean): boolean =>
     {
         const value = Env.text(name);
 
@@ -75,7 +75,7 @@ export const Env = {
         return value === "true";
     },
 
-    one: <Allowed extends string>(name: string, allowed: readonly Allowed[], fallback: Allowed): Allowed =>
+    oneOf: <Allowed extends string>(name: string, allowed: readonly Allowed[], fallback: Allowed): Allowed =>
     {
         const value = Env.text(name, fallback) ?? fallback;
 

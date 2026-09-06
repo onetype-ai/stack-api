@@ -45,7 +45,7 @@ class Folding
     }
 
     /* NFC, not NFKD: NFKD makes "Model 2" and "Model ²" one name. */
-    same(raw: string): string
+    folded(raw: string): string
     {
         return this.#flatten(raw)
             .replace(/[\uFB00-\uFB06]/gu, (tie) => Folding.#tied.get(tie) ?? tie)

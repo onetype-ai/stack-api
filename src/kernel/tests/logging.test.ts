@@ -35,6 +35,6 @@ describe("a log line", () =>
 
     test("and a level nobody knows does not silence the rest", () =>
     {
-        expect(Log.at("shouting" as never)).toBeDefined();
+        expect(Log.forLevel("shouting" as never)).toBeDefined();
     });
 });
