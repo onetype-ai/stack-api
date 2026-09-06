@@ -6,8 +6,18 @@ import { Project } from "@onetype/stack-api-kit/testing";
 
 const LONGER = new Set(["#docs/reference.md"]);
 
-/* Skipped while the documents are packed into docs.md. */
 const unpacked = existsSync(join(process.cwd(), "#docs"));
+
+/* Boundaries, unread fields and folders without a contract read code, not
+   documents, so they hold whether the documents are packed or not. A kit that
+   throws here instead is one whose document check takes them down with it. */
+test("no plugin crosses a boundary it did not declare", () =>
+{
+    const structural = Project.checks()
+        .filter((problem) => problem.check === "boundaries" || problem.check === "wiring" || problem.check === "unexplained");
+
+    expect(structural).toEqual([]);
+});
 
 describe.skipIf(!unpacked)("the documents this project ships", () =>
 {

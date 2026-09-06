@@ -611,8 +611,12 @@ A private `#whereShop()` / `#whereId(id)` / `#notFoundError()` trio makes that
 
 ## Files
 
-The kit holds none of this. A file is the one input a schema cannot judge: it
-checks a field's shape, never what is inside it.
+**A body is read as JSON, always.** No multipart: `form-data` answers 400.
+Bytes arrive as a string field your schema names, bounded by the body limit,
+and base64 costs a third more than the file.
+
+The kit judges none of it: a schema checks a field's shape, never what is
+inside it.
 
 - Bound what the bytes claim, not only how many: zip bomb, PNG bomb.
 - Name, extension and content type are the caller's claims.
