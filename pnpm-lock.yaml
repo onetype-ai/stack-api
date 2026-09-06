@@ -12,8 +12,8 @@ importers:
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.5)
       '@onetype/stack-api-kit':
-        specifier: ^3.0.0
-        version: 3.0.0(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)
+        specifier: ^3.0.1
+        version: 3.0.1(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
@@ -278,8 +278,8 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@onetype/stack-api-kit@3.0.0':
-    resolution: {integrity: sha512-ZRyjGZvLiWm2/3Z+9sTLqDUGJVcd7oCD6jG3FKa9vgr0Z9EM3gDMIlvuAv0xUg58nJIdrb9+U+rkd1a09aiL3A==}
+  '@onetype/stack-api-kit@3.0.1':
+    resolution: {integrity: sha512-E+UNr1GFKMri9QArk774j5MPB5CAH/M20WenYDyQndFPlJI8gq5t0Q+RDfydNsAR5Kd3Amhp+QhnmoFTA3RF9w==}
     engines: {node: '>=22'}
     peerDependencies:
       better-sqlite3: '>=13'
@@ -1266,7 +1266,7 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@onetype/stack-api-kit@3.0.0(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)':
+  '@onetype/stack-api-kit@3.0.1(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3))(hono@4.13.5)':
     dependencies:
       better-sqlite3: 13.0.3
       drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.3)
