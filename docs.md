@@ -252,6 +252,11 @@ only when `start` was given `schedule: true`. Asked inside a transaction it is
 written by that transaction, so work scheduled by something that rolled back
 never runs.
 
+**Without a schedule it throws, it does not go quiet.** Asked inside a
+transaction, that takes the whole write down: the caller gets a 500 and
+nothing is stored. Half-done work nobody can chase is the worse outcome, so
+the refusal is deliberate.
+
 ## No caller, and it may run twice
 
 `ctx.caller` is undefined, so whose work this is travels in the input. A
