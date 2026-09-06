@@ -2044,7 +2044,6 @@ export const Config = {
         holdSeconds: z.number().int().positive().default(900),
 
         payments: z.url().startsWith("https://").optional(),
-
     }),
 };
 
