@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import { serve } from "@hono/node-server";
 import { start } from "@onetype/stack-api-kit";
 import { Log } from "./kernel/logger";
@@ -166,7 +168,12 @@ class Api
 
 export const api = new Api();
 
-api.open().catch((cause: unknown) =>
+/* Only when run, never when imported: a test reaching for one pure method
+   would otherwise bind port 3000 and take its own worker down with it. */
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href)
 {
-    api.reportFailure(cause);
-});
+    api.open().catch((cause: unknown) =>
+    {
+        api.reportFailure(cause);
+    });
+}
