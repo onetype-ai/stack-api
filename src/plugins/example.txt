@@ -967,14 +967,14 @@ describe("a shop's limit", () =>
     {
         api = await startApi({ maxPerShop: 3 });
 
-        const sending = Array.from({ length: 10 }, () => api.kernel.handle({
+        const requests = Array.from({ length: 10 }, () => api.kernel.handle({
             method: "POST",
             path: "/catalog/products",
             input: { name: `P ${crypto.randomUUID()}`, cents: 100 },
             caller: caller(),
         }));
 
-        const answers = await Promise.all(sending);
+        const answers = await Promise.all(requests);
 
         expect(answers.filter((answer) => answer.status === 201)).toHaveLength(3);
     });
@@ -1317,12 +1317,12 @@ describe("answers", () =>
 
     test("sends back only what the schema names", async () =>
     {
-        const created = await addProduct();
+        const product = await addProduct();
 
         const answer = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products/:id",
-            input: { id: created.id },
+            input: { id: product.id },
             caller: caller(),
         });
 
@@ -1435,14 +1435,14 @@ describe("what a shop may reach", () =>
 
         const ours = await addProduct("acme", "Ours");
 
-        const listing = await api.kernel.handle({
+        const page = await api.kernel.handle({
             method: "GET",
             path: "/catalog/products/:id",
             input: { id: ours },
             caller: caller("other"),
         });
 
-        expect(listing.status).toBe(404);
+        expect(page.status).toBe(404);
     });
 
     test("refuses a caller carrying no shop, rather than defaulting", async () =>
@@ -2430,14 +2430,14 @@ afterEach(async () =>
 
 async function listProduct(cents = 2500): Promise<string>
 {
-    const created = await api.kernel.handle({
+    const newProduct = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `A product ${crypto.randomUUID()}`, cents },
         caller: caller(),
     });
 
-    const product = created.body as { id: string };
+    const product = newProduct.body as { id: string };
 
     await api.kernel.handle({
         method: "PATCH",
@@ -2469,7 +2469,7 @@ describe("the price comes from the plugin that owns it", () =>
     {
         api = await startApi();
 
-        const created = await api.kernel.handle({
+        const newProduct = await api.kernel.handle({
             method: "POST",
             path: "/catalog/products",
             input: { name: "Still a draft", cents: 100 },
@@ -2479,7 +2479,7 @@ describe("the price comes from the plugin that owns it", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders",
-            input: { productId: (created.body as { id: string }).id },
+            input: { productId: (newProduct.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2537,7 +2537,7 @@ describe("the partner it dials", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, () => ({ paid: true, reference: "r" }));
 
-        const created = await api.kernel.handle({
+        const newProduct = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listProduct(1750) },
@@ -2547,7 +2547,7 @@ describe("the partner it dials", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (created.body as { id: string }).id },
+            input: { id: (newProduct.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2564,7 +2564,7 @@ describe("the partner it dials", () =>
             () => ({ paid: false, reference: "r" }),
         );
 
-        const created = await api.kernel.handle({
+        const newProduct = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listProduct() },
@@ -2574,15 +2574,15 @@ describe("the partner it dials", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (created.body as { id: string }).id },
+            input: { id: (newProduct.body as { id: string }).id },
             caller: caller(),
         });
 
         expect(answer.status).toBe(402);
 
-        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
+        const page = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: caller() });
 
-        expect(listing.body).toMatchObject({ reserved: 1 });
+        expect(page.body).toMatchObject({ reserved: 1 });
     });
 });
 
@@ -2592,7 +2592,7 @@ describe("what the partner says is input", () =>
     {
         api = await startApi({ payments: PAYMENTS }, undefined, () => ({ ok: "sure" }));
 
-        const created = await api.kernel.handle({
+        const newProduct = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listProduct() },
@@ -2602,7 +2602,7 @@ describe("what the partner says is input", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (created.body as { id: string }).id },
+            input: { id: (newProduct.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2613,7 +2613,7 @@ describe("what the partner says is input", () =>
     {
         api = await startApi({ payments: "https://evil.test" });
 
-        const created = await api.kernel.handle({
+        const newProduct = await api.kernel.handle({
             method: "POST",
             path: "/orders",
             input: { productId: await listProduct() },
@@ -2623,7 +2623,7 @@ describe("what the partner says is input", () =>
         const answer = await api.kernel.handle({
             method: "POST",
             path: "/orders/:id/pay",
-            input: { id: (created.body as { id: string }).id },
+            input: { id: (newProduct.body as { id: string }).id },
             caller: caller(),
         });
 
@@ -2649,14 +2649,14 @@ afterEach(async () =>
 
 async function listProduct(shopper = caller()): Promise<string> 
 {
-    const created = await api.kernel.handle({
+    const newProduct = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `A product ${crypto.randomUUID()}`, cents: 2500 },
         caller: shopper,
     });
 
-    const product = created.body as { id: string };
+    const product = newProduct.body as { id: string };
 
     await api.kernel.handle({
         method: "PATCH",
@@ -2841,8 +2841,8 @@ describe("releasing holds that have run out", () =>
 
         await api.due();
 
-        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
-        const row = (listing.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === otherOrder);
+        const page = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: other });
+        const row = (page.body as { orders: { id: string; status: string }[] }).orders.find((order) => order.id === otherOrder);
 
         expect(row?.status).toBe("expired");
     });
@@ -2930,8 +2930,8 @@ describe("what a shop is listing", () =>
 
         clock += 601_000;
 
-        const listing = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
-        const answer = listing.body as { reserved: number; orders: { id: string; status: string }[] };
+        const page = await api.kernel.handle({ method: "GET", path: "/orders", input: {}, caller: shopper });
+        const answer = page.body as { reserved: number; orders: { id: string; status: string }[] };
         const row = answer.orders.find((order) => order.id === id);
 
         expect([answer.reserved, row?.status]).toEqual([0, "expired"]);
@@ -3017,14 +3017,14 @@ export function caller(
 /** A product this shop sells, listed and ready to be ordered. */
 export async function listProduct(api: TestApi, shopper = caller(), cents = 2500): Promise<string>
 {
-    const created = await api.kernel.handle({
+    const newProduct = await api.kernel.handle({
         method: "POST",
         path: "/catalog/products",
         input: { name: `P ${crypto.randomUUID()}`, cents },
         caller: shopper,
     });
 
-    const product = created.body as { id: string };
+    const product = newProduct.body as { id: string };
 
     await api.kernel.handle({
         method: "PATCH",
@@ -3039,14 +3039,14 @@ export async function listProduct(api: TestApi, shopper = caller(), cents = 2500
 /** One of those, held for the caller. */
 export async function reserveOrder(api: TestApi, shopper = caller()): Promise<string>
 {
-    const created = await api.kernel.handle({
+    const newProduct = await api.kernel.handle({
         method: "POST",
         path: "/orders",
         input: { productId: await listProduct(api, shopper) },
         caller: shopper,
     });
 
-    return (created.body as { id: string }).id;
+    return (newProduct.body as { id: string }).id;
 }
 
 ==> src/plugins/orders/types/Context.ts
