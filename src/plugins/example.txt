@@ -286,7 +286,7 @@ export const productRoutes: readonly Endpoint<CatalogContext>[] = [
         limit: { requests: 60, seconds: 60 },
         handle: async (input, ctx) =>
         {
-            return { products: await ctx.services.products.matching(input.text) };
+            return { products: await ctx.services.products.search(input.text) };
         },
     }),
     route({
@@ -654,7 +654,7 @@ export class Products
         return this.#toProduct(row);
     }
 
-    async matching(text: string): Promise<Product[]> 
+    async search(text: string): Promise<Product[]> 
     {
         const needle = Text.searched(text);
 
