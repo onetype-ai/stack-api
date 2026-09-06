@@ -4,8 +4,8 @@ Every file of these documents, one after another. A line starting
 with "==> " opens a file and names its path; everything until the next
 such line is that file, byte for byte.
 
-Rebuild it with:     node tools/pack/docs.mjs unpack
-Rewrite this with:   node tools/pack/docs.mjs pack
+Read it here. Nothing needs unpacking, and editing this file directly is work
+the next pack throws away.
 
 ==> #docs/usage.md
 
