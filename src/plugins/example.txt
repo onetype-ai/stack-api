@@ -2951,7 +2951,7 @@ describe("a slow refusal", () =>
             {
                 first = false;
 
-                await new Promise((keep) => setTimeout(keep, 20));
+                await new Promise((done) => setTimeout(done, 20));
 
                 throw new Error("the bank said no, eventually");
             }
@@ -2962,9 +2962,9 @@ describe("a slow refusal", () =>
         });
 
         const id = await reserveOrder(api, shopper);
-        const paying = pay(id);
+        const firstPayment = pay(id);
 
-        await new Promise((keep) => setTimeout(keep, 5));
+        await new Promise((done) => setTimeout(done, 5));
 
         /* The first payer still waits, so put it back and let a second win it. */
         const db = api.kernel.context("orders", shopper) as unknown as OrderContext;
@@ -2973,7 +2973,7 @@ describe("a slow refusal", () =>
 
         const second = await pay(id);
 
-        await paying;
+        await firstPayment;
 
         expect([second.status, await statusOf(id), charges]).toEqual([201, "paid", 1]);
     });
