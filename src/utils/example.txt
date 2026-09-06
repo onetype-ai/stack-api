@@ -9,9 +9,9 @@ the next pack throws away.
 
 ==> src/utils/Ordering.ts
 
-class Collation
+class OrderingUtils
 {
-    by(locale: string): Intl.Collator
+    collator(locale: string): Intl.Collator
     {
         try
         {
@@ -25,11 +25,11 @@ class Collation
     }
 }
 
-export const Ordering = new Collation();
+export const Ordering = new OrderingUtils();
 
 ==> src/utils/Text.ts
 
-class Folding
+class TextUtils
 {
     /* NFD lifts a mark above a letter; a stroke through one is its own. */
     #stroked = new Map(Object.entries({
@@ -48,7 +48,7 @@ class Folding
     folded(raw: string): string
     {
         return this.#flatten(raw)
-            .replace(/[\uFB00-\uFB06]/gu, (tie) => Folding.#tied.get(tie) ?? tie)
+            .replace(/[\uFB00-\uFB06]/gu, (tie) => TextUtils.#tied.get(tie) ?? tie)
             .normalize("NFC");
     }
 
@@ -58,11 +58,11 @@ class Folding
     }));
 
     /* One word, one alphabet: "Widgеt" hides a Cyrillic e. A name may mix. */
-    mixed(raw: string): boolean
+    isMixed(raw: string): boolean
     {
         return this.visible(raw).split(/\s+/u).some((word) =>
         {
-            return Folding.#alphabets.filter((alphabet) => alphabet.test(word)).length > 1;
+            return TextUtils.#alphabets.filter((alphabet) => alphabet.test(word)).length > 1;
         });
     }
 
@@ -98,4 +98,4 @@ class Folding
     }
 }
 
-export const Text = new Folding();
+export const Text = new TextUtils();

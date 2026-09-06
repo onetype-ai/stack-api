@@ -424,7 +424,7 @@ export const Product = {
             );
         }
 
-        if (Text.mixed(name))
+        if (Text.isMixed(name))
         {
             throw new Refusal(
                 400,
@@ -631,10 +631,10 @@ export class Products
             .from(products)
             .where(this.#whereShop(query.status));
 
-        const collator = Ordering.by(query.locale);
+        const collator = Ordering.collator(query.locale);
         const sorted = [...rows].sort((first, second) => collator.compare(first.name, second.name));
 
-        const { page, after } = Paging.from(sorted, this.#ctx.config.pageSize, query.after);
+        const { page, after } = Paging.slice(sorted, this.#ctx.config.pageSize, query.after);
 
         return {
             products: page.map((row) => this.#toProduct(row)),
@@ -1060,9 +1060,9 @@ describe("a locale nobody could read", () =>
 {
     test("is refused, not answered with a broken server", () =>
     {
-        expect(() => Ordering.by("!!")).not.toThrow();
-        expect(() => Ordering.by("en_US")).not.toThrow();
-        expect(() => Ordering.by("--")).not.toThrow();
+        expect(() => Ordering.collator("!!")).not.toThrow();
+        expect(() => Ordering.collator("en_US")).not.toThrow();
+        expect(() => Ordering.collator("--")).not.toThrow();
     });
 });
 
@@ -1104,28 +1104,28 @@ describe("a page of an ordered list", () =>
 {
     test("starts at the beginning and says where the next one starts", () =>
     {
-        expect(Paging.from(rows, 2)).toEqual({ page: [{ id: "a" }, { id: "b" }], after: "b" });
+        expect(Paging.slice(rows, 2)).toEqual({ page: [{ id: "a" }, { id: "b" }], after: "b" });
     });
 
     test("continues from the cursor, never repeating it", () =>
     {
-        expect(Paging.from(rows, 2, "b")).toEqual({ page: [{ id: "c" }, { id: "d" }], after: "d" });
+        expect(Paging.slice(rows, 2, "b")).toEqual({ page: [{ id: "c" }, { id: "d" }], after: "d" });
     });
 
     test("and answers no cursor on the last page", () =>
     {
-        expect(Paging.from(rows, 2, "d")).toEqual({ page: [{ id: "e" }] });
-        expect(Paging.from(rows, 10)).toEqual({ page: rows });
+        expect(Paging.slice(rows, 2, "d")).toEqual({ page: [{ id: "e" }] });
+        expect(Paging.slice(rows, 10)).toEqual({ page: rows });
     });
 
     test("answers nothing for a cursor no row carries", () =>
     {
-        expect(Paging.from(rows, 2, "gone")).toEqual({ page: [{ id: "a" }, { id: "b" }], after: "b" });
+        expect(Paging.slice(rows, 2, "gone")).toEqual({ page: [{ id: "a" }, { id: "b" }], after: "b" });
     });
 
     test("and nothing at all for an empty list", () =>
     {
-        expect(Paging.from([], 2)).toEqual({ page: [] });
+        expect(Paging.slice([], 2)).toEqual({ page: [] });
     });
 });
 
@@ -1696,9 +1696,9 @@ export type Services = {
 
 ==> src/plugins/catalog/utils/Paging.ts
 
-class Cursor
+class PagingUtils
 {
-    from<Row extends { id: string }>(sorted: readonly Row[], size: number, after?: string):
+    slice<Row extends { id: string }>(sorted: readonly Row[], size: number, after?: string):
         { page: readonly Row[]; after?: string }
     {
         const start = after === undefined ? 0 : sorted.findIndex((row) => row.id === after) + 1;
@@ -1712,7 +1712,7 @@ class Cursor
     }
 }
 
-export const Paging = new Cursor();
+export const Paging = new PagingUtils();
 
 ==> src/plugins/orders/plugin.ts
 

@@ -536,9 +536,9 @@ A service is a class named for its subject, not suffixed. `ctx` in its
 constructor, `#private` for what only it calls. A util is a class too, holding no `ctx` and exported already built:
 
 ```ts
-class Folding { searched(raw: string): string { … } }
+class TextUtils { searched(raw: string): string {…} }
 
-export const Text = new Folding();
+export const Text = new TextUtils();
 ```
 
 Everything else is an object of methods. Imports: values, types, the file's
