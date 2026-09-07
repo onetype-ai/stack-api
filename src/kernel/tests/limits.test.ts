@@ -7,7 +7,7 @@ function request(headers: Record<string, string> = {})
     return { req: { header: (name: string) => headers[name.toLowerCase()] } };
 }
 
-describe("what a rate limit counts an unknown caller by", () =>
+describe("what a rate limit counts an unknown identity by", () =>
 {
     test("is the forwarded address when a proxy is known to set it", () =>
     {
@@ -53,7 +53,6 @@ describe("what a watch says about listeners that failed", () =>
         expect(api.unseen(failures, api.unseen(failures, 0).read).fresh).toEqual([]);
     });
 
-    /* A burst of failures shares a millisecond, so comparing them loses some. */
     test("including one that failed in the same millisecond as the last", () =>
     {
         const { read } = api.unseen([failure(10)], 0);

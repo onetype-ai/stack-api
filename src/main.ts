@@ -43,7 +43,6 @@ class Api
             log,
         });
 
-        /* Node's own report is not a log line, so a collector would miss it. */
         process.on("unhandledRejection", (cause: unknown) =>
         {
             log.error("a promise was rejected and nobody was listening", { cause });
@@ -57,7 +56,6 @@ class Api
 
         const server = serve({ fetch: api.fetch, port: settings.port });
 
-        /* Zero turns it off on purpose. */
         if (settings.watchSeconds > 0)
         {
             this.watch(api, log, settings.watchSeconds * 1000);
@@ -68,7 +66,6 @@ class Api
         this.closeOnSignal(server, api, log);
     }
 
-    /* Counted, not compared: stamps are milliseconds and a burst shares one. */
     unseen(failures: readonly Failure[], read: number): { fresh: readonly Failure[]; read: number }
     {
         return { fresh: failures.slice(read), read: failures.length };
@@ -82,7 +79,6 @@ class Api
         {
             const failures = api.kernel.events.failures();
 
-            /* The ring is bounded, so a burst larger than it drops the oldest. */
             if (failures.length < read)
             {
                 read = 0;
@@ -122,7 +118,6 @@ class Api
 
             log.info("stopping", { signal });
 
-            /* Not awaited: one held connection would keep this from ever running. */
             server.close();
 
             const forced = setTimeout(() =>
@@ -136,7 +131,6 @@ class Api
             api.stop().then(
                 async () =>
                 {
-                    /* A reply still on its way out would be reset mid-write. */
                     await new Promise((settle) => setTimeout(settle, this.draining));
 
                     process.exit(0);
@@ -158,7 +152,6 @@ class Api
         }
     }
 
-    /* JSON like every other line, so a collector keeps it. */
     reportFailure(cause: unknown): void
     {
         process.stderr.write(Log.line("error", "the api did not start", { cause }));
@@ -168,8 +161,6 @@ class Api
 
 export const api = new Api();
 
-/* Only when run, never when imported: a test reaching for one pure method
-   would otherwise bind port 3000 and take its own worker down with it. */
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href)
 {
     api.open().catch((cause: unknown) =>

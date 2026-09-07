@@ -37,15 +37,14 @@ export const Env = {
             return fallback;
         }
 
-        /* Number("  ") is 0, and a stray space in a .env would read as one. */
-        const parsed = value.trim() === "" ? Number.NaN : Number(value);
+        const asNumber = value.trim() === "" ? Number.NaN : Number(value);
 
-        if (!Number.isInteger(parsed) || parsed < least || parsed > most)
+        if (!Number.isInteger(asNumber) || asNumber < least || asNumber > most)
         {
             throw new Error(`${name} must be a whole number from ${String(least)} to ${String(most)}. Received "${value}".`);
         }
 
-        return parsed;
+        return asNumber;
     },
 
     list: (name: string): readonly string[] =>

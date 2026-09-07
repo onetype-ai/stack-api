@@ -56,7 +56,7 @@ A plugin's `index.ts` is the only file another may import, and the plugin must
 be in `dependsOn`. Anything deeper is rejected by lint.
 
 `reference.md` holds every signature; `#docs/procedures/` how to build each
-part.
+part, and `procedures/absent.md` what the kit deliberately does not do.
 
 ==> #docs/architecture.md
 
@@ -70,7 +70,8 @@ never a branch inside an old one.
 ## Three ways to cross
 
 - **Public API** for a result now, from a plugin in `dependsOn`. Methods take
-  `ctx`, so they run anywhere `ctx` does.
+  `ctx`, so they run anywhere `ctx` does. A number crossing carries what it
+  counts: `measure("bytes")` makes bytes and gigabytes different types.
 - **Events** to announce what happened. Nothing comes back, nobody waits.
 - **Hooks** to let a participant refuse. One refuses by returning a reason;
   throwing or never answering refuses too. Participating in your own hook is
@@ -88,6 +89,15 @@ Refuses:
 The client hides, the server refuses. Every route parses its input and filters
 its output.
 
+## One shape, every route
+
+A listing answers a named key, never a bare array: `{ notes: [...] }` leaves
+room for a cursor beside it.
+
+Every 4xx carries a `code` to branch on and a sentence to read, with `fields`
+where the server knows which input was wrong. A number the caller needs goes
+in `fields`, not into the sentence: "1 notes" is what that looks like.
+
 ## Failure is contained
 
 A route that throws answers 500 and logs everything. A listener that throws
@@ -98,6 +108,57 @@ reaches neither the emitter nor the others, so nothing marks it but
 
 Plugins are discovered from the folder, not a list. A cross-plugin import is
 checked against `dependsOn`, so an undeclared one fails.
+
+==> #docs/procedures/absent.md
+
+# Procedure: what the kit does not do
+
+Each is deliberate, and each is found by trying unless it is written down.
+
+## Sessions and cookies
+
+The kit reads no cookie. A route answers `x-session-key` with
+`x-session-expires`, or `x-session-end`, and `session: { name, secure }` in
+`start` makes the cookie; see `deploy.md`. A plugin that never learns what a
+cookie is serves a token client unchanged.
+
+## What a hook may answer
+
+A reason to refuse, or nothing. Never data:
+`hooks.run: (hook, payload) => Promise<string | undefined>`.
+
+Needing something back means a public API call, which is what `dependsOn` is
+for. Packing an answer into the string works, and says the boundary is in the
+wrong place.
+
+## Emitting
+
+`kernel.events` holds `failures()` and nothing else. An event goes out through
+the context of the plugin that owns it: `ctx.events.emit` in a service, or
+`kernel.context("notes").events.emit` in a test.
+
+## Another plugin's config
+
+There is no `ctx.configOf`. Config belongs to the plugin that declared it, and
+what another needs is a method on its public API.
+
+## Output schemas that cannot strip
+
+`z.any`, `z.unknown`, `z.record`, a loose object, a catchall and a transform
+each forward whatever the handler returned, so the kernel refuses such a route
+at startup. Name every field: not knowing their names says the answer is a bag
+rather than a shape.
+
+## Locale and formatting
+
+Every message the kit writes is English, and it formats nothing: no dates, no
+numbers, no currency. A caller needing otherwise translates a `Refusal` by its
+`code`.
+
+## Retries on outbound calls
+
+`ctx.fetch` dials once. How long to back off depends on what the partner does,
+so the plugin decides, branching on `OutboundFault.code`.
 
 ==> #docs/procedures/checks.md
 
@@ -129,13 +190,18 @@ Anything under `#docs/` over 1800 characters, and any plugin with no
 `usage.md`. Every key the contract accepts must be named in
 `procedures/plugin/contract.md`.
 
+Only while the documents are a folder: packed, there is nothing to walk. The
+limit is for whoever writes, and one that has to be measured is one nobody
+was watching anyway.
+
 ## What it does not look at
 
 - **Only exported types.** An unexported one, a comment, or a test reading the
   field does not count, and only the declaring plugin is searched.
 - **Only `#docs/`.** The size limit never reaches a plugin's own `usage.md`.
   Hold that limit yourself.
-- The `progress` folder is skipped, and `checking.limit` moves the number.
+- `checking.limit` moves the number, and the size check sleeps while `#docs`
+  is packed.
 - `src/utils` is checked for unread fields too, not only `src/plugins`.
 - Lint refuses a util, in `src/utils` or a plugin's own, that imports a plugin
   or the kit: wanting a `ctx` makes it a service.
@@ -149,34 +215,37 @@ nothing else may. Signatures are in `reference.md`.
 
 ## What is running
 
-```ts
-type Registration = {
-    plugin: string; method: Method; path: string; describe: string;
-    requires: readonly string[]; public: boolean;
-    limit: { requests: number; seconds: number } | undefined;
-    reads: readonly string[];
-};
-```
-
-`kernel.routes()` answers these. Assert which routes are public, that every
+`kernel.routes()` answers a `Registration` per route: plugin, method, path,
+`requires`, `public`, `limit`, `reads`. Assert which are public, that every
 closed one carries a budget, and that no `reads` names a credential header. A
 route opened by accident then fails a test, not a review.
 
 ## Secrets
 
 `config` is validated and logged at startup, so nothing secret goes in it. A
-credential is read from the environment here and passed in as a value:
-`identify` takes the session store, `dial` the headers it sends.
+credential is read from the environment here and passed as a value: `identify`
+takes the session store, `outbound` the headers it sends.
+
+## Limits
+
+`limits: false` allows every request and says so loudly at startup. The
+numbers stay in the routes: how many attempts are reasonable is a decision,
+not a setting. Off where nobody attacks.
+
+## Sessions
+
+`session: { name, secure }` turns a route's `x-session-key` into an `HttpOnly`
+cookie and takes the header back out. `secure` needs https, so localhost leaves
+it off or no browser keeps one.
 
 ## Logging
 
-A 5xx carries the request id, the plugin, the message and the stack; a 4xx
-does not.
+A 5xx carries the request id, the plugin, the message and the stack; a 4xx does
+not.
 
-The kit logs, it does not notify. A failed listener has nobody waiting on it,
-so the root polls `kernel.events.failures()` every `WATCH_SECONDS` and warns
-once per failure. Warn, never 503: one undelivered email is not a dead
-process.
+The kit logs, it does not notify. Nobody waits on a failed listener, so the
+root polls `kernel.events.failures()` every `WATCH_SECONDS` and warns once
+each. Warn, never 503: one undelivered email is not a dead process.
 
 ## Health
 
@@ -198,14 +267,14 @@ and plugins are up, and again while stopping.
 ```ts
 await ctx.tx(async (inside) =>
 {
-    await inside.db.insert(orders).values(row);
-    inside.events.emit("orders.placed", { id: row.id, ownerId: row.owner });
+    await inside.db.insert(notes).values(row);
+    inside.events.emit("notes.note.written", { id: row.id, ownerId: row.ownerId });
 });
 ```
 
 Held until the commit. What holds it is the open transaction, not the context
 you called `emit` on: what escapes is an emit after it ends. Emitting belongs
-to the service, not `plugin.ts`. `ctx.caller` is undefined in a listener, so
+to the service, not `plugin.ts`. `ctx.identity` is undefined in a listener, so
 whose work it was travels in the payload.
 
 ## Delivery
@@ -221,8 +290,9 @@ next startup. Delivery is at least once: a writing listener ends with
 
 A listener needs no `dependsOn`: an emitter does not know who listens, which
 lets two plugins react to each other. But an event nobody declares does not
-exist, so a test boots the emitter too. The boundary checker builds its graph from imports, tests included, so
-that boot can be reported as a cycle though it is one on paper.
+exist, so a test boots the emitter too. That boot is not a cycle even where
+the emitter depends on the listener: the checker reads production code, so a
+loop it reports is one a deployment would load.
 
 Your `listens` schema names the type you are handed, it does not check it. The
 kernel checks the emitter's, so drift hands your handler a value that is not
@@ -259,7 +329,7 @@ the refusal is deliberate.
 
 ## No caller, and it may run twice
 
-`ctx.caller` is undefined, so whose work this is travels in the input. A
+`ctx.identity` is undefined, so whose work this is travels in the input. A
 scheduled command declares no `requires`: no permission can be granted to
 nobody.
 
@@ -348,45 +418,78 @@ and the public API.
 # Procedure: plugin contract
 
 `plugin.ts` is the whole boundary: undeclared means it does not exist, and the
-kernel refuses to start, naming the plugin and the cause. `over` names what
-`ctx.db` and `ctx.services` are: the kernel imports no driver, so nothing
-infers them.
-
-```ts
-export default definePlugin.over<CatalogDb, Services>()("catalog", { … });
-```
+kernel refuses to start, naming the plugin and the cause. `over` names what `ctx.db`
+and `ctx.services` are: the kernel imports no driver to infer them.
 
 ## Keys
 
-- `version` raised by a breaking change to a name or payload, `describe` one
-  line of what this owns, `dependsOn` the plugins whose API it uses.
+- `version` raised by a breaking change, `describe` one line of what this
+  owns, `dependsOn` whose API it uses.
 - `config`: a schema, validated at startup. Never a secret.
-- `permissions`: those it defines, used elsewhere by key.
-- `tables`, `migrations`: its own, run in dependency order.
+- `permissions`: those it defines, used by key elsewhere.
+- `tables`, `migrations`: its own, in dependency order.
 - `scope`: the claim deciding whose rows these are, see `scoping.md`.
 - `outbound`: hosts it may reach, see `connections.md`.
 - `services`: a factory returning what it runs on.
 - `routes`: `method`, `path`, `describe`, `input`, `output`, `handle`, and
-  `requires` or `public`. `reads` names headers seen, `limit` a budget.
+  `requires` or `public`. `reads` names headers, `limit` a budget, `accepts` a
+  form body.
 - `emits`, `listens`: announced and heard, each with a schema.
 - `hooks`, `participates`: points it owns, and others' it joins.
+- `identifies`, `grants`, `mayGrant`: who is calling, what it means, every
+  permission it may answer. One plugin each.
 - `commands`: entry points, a schema and optional `requires`: a scheduled one
-  runs for nobody, so it names none.
+  runs for nobody, so names none.
 
-Signatures are in `reference.md`. `identify` is an option of `start`, not a
-key here.
 - `setup` / `teardown`: run at start and stop.
+
+Signatures are in `reference.md`.
 
 ## Rules
 
-`services` comes before anything reading it: inference runs left to right.
+`services` precedes anything reading it: inference runs left to right.
 
 The kernel checks the owner's schema: an event against `emits`, a hook against
-`hooks`. A listener's own only names the type it is handed.
+`hooks`. A listener's own names only the type it is handed.
 
-A route is closed until `public: true`, and `requires` never accompanies it.
-`output` names all that may leave, and a header outside `reads` never reaches
-the handler.
+A route is closed until `public: true`, which `requires` never accompanies.
+`output` names all that may leave; a header outside `reads` never reaches the
+handler.
+
+==> #docs/procedures/plugin/files.md
+
+# Procedure: files
+
+## How bytes arrive
+
+`accepts: "form"` reads `multipart/form-data`: text parts reach `input` as
+fields, file parts as `Upload` — `name`, `type`, `bytes`. Declared, never
+sniffed, so a route expecting JSON cannot be handed a file, and the wrong kind
+of body is 415.
+
+A schema names a file field with `z.custom(isUpload)`. Bound the bytes there:
+nothing bounds one part apart from the body limit over all of them.
+
+Without it a body is JSON, and bytes come base64 in a field a schema names.
+That costs a third more on the wire and holds the file twice: measured, ten
+5 MB uploads at once cost 224 MB against 6 MB streamed.
+
+## Anything larger
+
+A file worth streaming does not belong in a request. Sign a URL, let the
+browser send straight to the store, keep the row. Measured against base64:
+0.007 ms per request and no bytes through the process, against 2.3 ms and
+139 MB.
+
+## Rules
+
+- Bound what the bytes claim, not only how many: zip bomb, PNG bomb.
+- Name, extension and type are the caller's claims. The kit strips a path from
+  the name, which is all it promises: it is still their word.
+- Store under an id you made; never build a path from a caller's name.
+- Never serve a type the caller chose.
+- A row is scoped, the bytes are not. Reach them through the row, so a guessed
+  id answers 404 like any other.
 
 ==> #docs/procedures/plugin/scoping.md
 
@@ -422,7 +525,7 @@ Public route:  scoped and stamped are 403. forScope works.
 ```
 
 The test is the caller, never the route. `forScope` throws whenever
-`ctx.caller` exists: run such a command with no caller, `kernel.run(name,
+`ctx.identity` exists: run such a command with none, `kernel.run(name,
 input)`, or let the schedule run it.
 
 A knife: an unknown caller chooses whose rows they land in. Use it where the
@@ -498,12 +601,12 @@ plugins/<name>/
 ├── plugin.ts       the contract: all that crosses the boundary
 ├── index.ts        the public API: what another plugin may call
 ├── schemas/        a zod schema and what parses against it
-├── types/          shapes describing code alone: a context, a handle
-├── tables/         one table per file
-├── migrations/     NNNN-name.sql, run in dependency order
+├── types/          shapes describing code alone
+├── tables/         one table a file
+├── migrations/     NNNN-name.sql, in dependency order
 ├── services/       the logic: one class per subject
-├── routes/         one file per resource, handlers only
-├── utils/          pure, domain-free
+├── routes/         handlers only, one per resource
+├── utils/          pure, no domain
 └── tests/
 ```
 
@@ -514,35 +617,36 @@ No `index.ts` inside a folder: a plugin is private throughout.
 Stop at the first yes:
 
 1. Crosses a boundary, so it needs a schema → `schemas/`
-2. Describes only code, so it needs none → `types/`
+2. Describes only code, no schema → `types/`
 3. Describes a table → `tables/`
 4. Answers a request → `routes/`
 5. Knows the domain, not the request → `services/`
 6. Pure and domain-free → `utils/`
 
-A route handler holds no logic: it reads its input and calls a service.
+A route handler holds no logic: it reads input and calls a service.
 
 ## Naming and style
 
 Folder and `name` are the same word, lowercase. The ban on `utils` and
-`helpers` is on the plugin name, not the folder inside one. A folder that
-cannot be named in one word is two plugins.
+`helpers` is on the plugin name, not the folder inside. One that needs two
+words is two plugins.
 
 A file inside carries no plugin prefix: `schemas/Item.ts`, not
 `schemas/DemoItem.ts`. It returns at `index.ts`, where a consumer sees it out
 of context.
 
-A service is a class named for its subject, not suffixed. `ctx` in its
-constructor, `#private` for what only it calls. A util is a class too, holding no `ctx` and exported already built:
+A service is a class named for its subject, not suffixed: `ctx` in the
+constructor, `#private` for what only it calls. A util is one too, with no
+`ctx`, exported already built:
 
 ```ts
-class TextUtils { searched(raw: string): string {…} }
+class TextUtils { searchable(raw: string): string {…} }
 
 export const Text = new TextUtils();
 ```
 
-Everything else is an object of methods. Imports: values, types, the file's
-own, then its export. Allman braces.
+Everything else is an object of methods. Allman braces; imports in order:
+values, types, the file's own.
 
 ==> #docs/procedures/plugin/text.md
 
@@ -563,8 +667,8 @@ page is a cursor naming the last row, re-found with the same comparator, never
 `LIMIT/OFFSET`. **Matching** is a folded column the service writes, and is
 wrong in Turkish: never order on one.
 
-Matching and uniqueness want different folds: `Apfel` should find `Äpfel`, but
-a shop may sell both.
+Matching and uniqueness want different folds: `Apfel` should find `Äpfel`, and
+both may still be kept apart. `Text.searchable` and `Text.comparable`.
 
 ## A character is three different numbers
 
@@ -597,12 +701,15 @@ Mechanical, so no plugin forgets:
 - **Errors**: only a `Refusal` speaks to a caller.
 - **Routes are closed** until `public: true`. Not deciding fails shut.
 - **Credentials never reach a handler.** A route reading `cookie` or
-  `authorization` is refused at startup.
-- **Outbound** reaches only what the plugin declared, and `ctx.fetch` never
-  follows a redirect: the kernel checked the first url, never the second.
-- **Bodies** are bounded before parsing; secrets compared with `equalsInConstantTime`.
-- **Writes** are serialised: one request's query cannot land inside another's
-  transaction.
+  `authorization` is refused at startup; one setting `set-cookie` is dropped.
+  A session leaves on `x-session-key` with `x-session-expires`, or
+  `x-session-end` to close one, and `session` in `start` makes the cookie. A
+  plugin that never learns what a cookie is serves a token client unchanged.
+- **Outbound** reaches only what the plugin declared, and never follows a
+  redirect: the kernel checked the first url, never the second.
+- **Bodies** are bounded before parsing; secrets compared with
+  `equalsInConstantTime`.
+- **Writes** are serialised: one request's query cannot land inside another's.
 
 ## What you hold
 
@@ -611,24 +718,27 @@ Mechanical, so no plugin forgets:
 - A route without a `limit` has none.
 - Another server's answer is input.
 
-A private `#whereShop()` / `#whereId(id)` / `#notFoundError()` trio makes that
-404 automatic instead of remembered.
+Three private methods make that 404 automatic rather than remembered, and
+every read in the service goes through them:
 
-## Files
+```ts
+#whereOwner(): SQL | undefined
+{
+    return this.#ctx.scoped<SQL>("notes");
+}
 
-**A body is read as JSON, always.** No multipart: `form-data` answers 400.
-Bytes arrive as a string field your schema names, bounded by the body limit,
-and base64 costs a third more than the file.
+#whereId(id: string): SQL | undefined
+{
+    return and(eq(notes.id, id), this.#whereOwner());
+}
 
-The kit judges none of it: a schema checks a field's shape, never what is
-inside it.
+#notFoundError(): Refusal
+{
+    return new Refusal(404, "NOT_FOUND", "No such note.");
+}
+```
 
-- Bound what the bytes claim, not only how many: zip bomb, PNG bomb.
-- Name, extension and content type are the caller's claims.
-- Store under an id you made; never build a path from a caller's name.
-- Never serve a type the caller chose.
-- A row is scoped, the bytes on disk are not. Reach them through the row, so a
-  guessed id answers 404 like any other.
+Files are their own subject: `procedures/plugin/files.md`.
 
 ==> #docs/procedures/testing.md
 
@@ -672,6 +782,8 @@ never broken proves nothing.
 
 # Reference
 
+Not enough? Every signature is in the kit's `dist/types.d.ts`.
+
 ## Refusal and Reply
 
 ```ts
@@ -699,31 +811,38 @@ called once for the context, then the schema and the handler.
 
 Two entry points, and nothing is in both. `@onetype/stack-api-kit` holds
 everything a plugin or `main.ts` uses at runtime, faults included:
-`KernelFault`, `OutboundFault`, `Kernel`, `Caller`, `Endpoint`. Its `/testing`
-holds what only a test uses: `startTestKernel`, `createCaller`, `Project`.
+`KernelFault`, `OutboundFault`, `Kernel`, `Identity`, `Endpoint`. Its `/testing`
+holds what only a test uses: `startTestKernel`, `createIdentity`, `Project`.
 
 `equalsInConstantTime(left, right)` compares secrets in constant time.
 
 ## Context
 
-`name`, `config`, `services`, `log`, `caller`, `headers`, `db`, `tx`, `write`,
-`fetch`, `events.emit`, `hooks.run`, `permissions.has` / `.all` / `.claims`,
-`commands.run` / `.later`, `scoped` / `stamped` / `forScope`, `owns`,
-`use`, `now`. `caller` is undefined outside a request: in `setup`, and in a
-listener.
+`name`, `config`, `services`, `log`, `identity`, `headers`, `db`, `tx`, `write`,
+`fetch`, `events.emit`, `commands.run` / `.later`, `scoped` / `stamped` /
+`forScope`, `owns`, `use`, `now`. The ones whose answer is easy to guess wrong:
+
+```ts
+identity: { id: string; permissions: readonly string[]; claims: Record<string, unknown> } | undefined
+hooks.run: (hook: string, payload: unknown) => Promise<string | undefined>
+permissions: { has(one): boolean; all(many): boolean; claims(): Record<string, unknown> }
+```
+
+A hook answers a refusal or nothing, never data. `claims` is what the project
+attached, so every read of one checks its type. `identity` is undefined outside
+a request: in `setup`, and in a listener.
 
 ## identify
 
 ```ts
-identify?: (kernel: Kernel) => (c: HonoContext) => Caller | undefined | Promise<Caller | undefined>
+identify?: (kernel: Kernel) => (c: HonoContext) => Identity | undefined | Promise<Identity | undefined>
 
 identify: (kernel) => async (c) => Sessions.of(kernel, c.req.header("cookie"))
 ```
 
 Given the started kernel, so it may reach a plugin's public API. Runs once per
-request and answers a `Caller` carrying `id`, `permissions` and `claims`, or
-nothing: a stranger, not a refusal. Throwing is 401, never 500. Unset, every
-closed route is 401.
+request. Nothing is a stranger, not a refusal; throwing is 401, never 500.
+Unset, every closed route is 401.
 
 ## Testing
 
@@ -734,10 +853,10 @@ const api = await startTestKernel({
     outbox: true, schedule: true, now: () => clock,
 });
 
-const who = createCaller(["items.read"], ownerId, { tenantId: "acme" });
+const owner = createIdentity(["items.read"], ownerId, { tenantId: "acme" });
 
 await api.kernel.handle({
-    method: "GET", path: "/items/:id", input: { id }, caller: who,
+    method: "GET", path: "/items/:id", input: { id }, identity: owner,
     headers: { "user-agent": "test" }, from: "203.0.113.7",
 });
 ```
@@ -758,12 +877,13 @@ emittedEvents() [{ plugin, event, payload }]
 ```
 
 `emittedEvents()` names the field `event`, not `name`, and records an emit
-nobody hears. `settle()` waits for what one started. `due()` runs the
-schedule; `logLines` explains a 500.
-`kernel.context(plugin, caller)` reaches a service, `kernel.run(command,
-input, caller)` a command, `kernel.events.failures()` the listeners that
-threw. **Leave `caller` out for a command that uses `forScope`:** the scope of
-a request is the caller's, so any caller at all makes `forScope` refuse. `kernel.routes()` is in `procedures/deploy.md`.
+nobody hears. `settle()` waits for what one started; `logLines` explains a 500.
+
+`kernel.context(plugin, identity)` reaches a service, `kernel.run(command,
+input, identity)` a command, `kernel.events.failures()` the listeners that
+threw — the only thing `kernel.events` holds. Emitting goes through the
+context of the plugin that owns the event. **Leave `identity` out for a command using `forScope`:** a request's
+scope is the caller's, so any identity makes it refuse.
 
 ==> #docs/stack.md
 
@@ -786,13 +906,14 @@ src/
 └── main.ts     composition root
 ```
 
-A util is written in the plugin that needs it, and moves to `src/utils` when a
+A util is written in the plugin that needs it and moves to `src/utils` when a
 second asks. It takes values and answers values: wanting a `ctx` makes it a
 service, and is refused.
 
 Dependencies point one way: the kernel imports no plugin, and a plugin imports
-another only through its `index.ts`. ESLint refuses the deep import,
-`Project.checks()` the undeclared one.
+another only through its `index.ts`. (The kit's own use `api.ts`: its
+convention, not yours.) ESLint refuses the deep import, `Project.checks()` the
+undeclared one.
 
 ## The kit
 
@@ -806,5 +927,10 @@ holds what a test uses, and the checks this repository runs on itself.
 order, validates every contract, rejects cycles, runs `setup` in order, then
 mounts the routes on Hono. Any failure stops the boot naming the plugin and
 the cause: nothing partially starts. `identify` is given the started kernel.
+
+`database` takes a path, or a `Store` of your own: Postgres or anything else
+answering `of` and `tx` replaces SQLite without the kernel knowing. Left out,
+nothing opens and a plugin declaring tables is refused by name, so a site
+keeping no rows says nothing about databases.
 
 `pnpm verify` runs lint, typecheck and tests.

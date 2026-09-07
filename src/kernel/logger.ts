@@ -6,18 +6,17 @@ type Write = (level: Level, line: string, about?: Readonly<Record<string, unknow
 export const Log = {
     order: { debug: 0, info: 1, warn: 2, error: 3 } as Readonly<Record<Level, number>>,
 
-    /* Written last, so a caller cannot rename the time, level or line. */
     line: (level: Level, line: string, about?: Readonly<Record<string, unknown>>): string =>
     {
-        const written = { ...about, at: new Date().toISOString(), level, line };
+        const record = { ...about, at: new Date().toISOString(), level, line };
 
         try
         {
-            return `${JSON.stringify(written, Log.readable)}\n`;
+            return `${JSON.stringify(record, Log.readable)}\n`;
         }
         catch
         {
-            return `${JSON.stringify({ at: written.at, level, line, about: "unreadable" })}\n`;
+            return `${JSON.stringify({ at: record.at, level, line, about: "unreadable" })}\n`;
         }
     },
 
@@ -35,7 +34,6 @@ export const Log = {
     {
         const write: Write = (at, line, about) =>
         {
-            /* An unknown level is NaN on both sides, which silences every line. */
             if ((Log.order[at] ?? 0) >= (Log.order[level] ?? 0))
             {
                 process.stdout.write(Log.line(at, line, about));
