@@ -22,7 +22,7 @@ export const Settings = {
     read: (): Settings =>
     {
         return {
-            port: Env.number("PORT", 3000, 1, 65_535),
+            port: Env.number("PORT", 7280, 1, 65_535),
             database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
             outbox: Env.flag("OUTBOX", false),
             schedule: Env.flag("SCHEDULE", false),

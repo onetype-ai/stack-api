@@ -15,7 +15,7 @@ the next pack throws away.
 
 ```sh
 pnpm install
-pnpm dev              # http://localhost:3000
+pnpm dev              # http://localhost:7280
 pnpm verify           # lint, typecheck, test
 ```
 
