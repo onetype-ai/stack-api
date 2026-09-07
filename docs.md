@@ -439,8 +439,8 @@ and `ctx.services` are: the kernel imports no driver to infer them.
   form body.
 - `emits`, `listens`: announced and heard, each with a schema.
 - `hooks`, `participates`: points it owns, and others' it joins.
-- `identifies`, `grants`, `mayGrant`: who is calling, what it means, every
-  permission it may answer. One plugin each.
+- `identifies`, `grants`, `mayGrant`: who is calling, what it means, and what
+  startup holds that to. One plugin each.
 - `commands`: entry points, a schema and optional `requires`: a scheduled one
   runs for nobody, so names none.
 
