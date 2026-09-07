@@ -380,9 +380,11 @@ cannot carry, a driver carries.
 
 ## What a call answers
 
-`ctx.fetch` answers the parsed body and nothing else. A refusal throws an
-`OutboundFault` carrying `code` and, for a `STATUS`, the status: that is where
-a partner's 410 and its 503 are told apart, so branch on both:
+`ctx.fetch` answers the parsed body and nothing else, or the raw string when
+the call declared `accepts: "text"`, which is what a page or a sitemap is.
+A refusal throws an `OutboundFault` carrying `code` and, for a `STATUS`, the
+status: that is where a partner's 410 and its 503 are told apart, so branch on
+both:
 
 ```ts
 if (cause instanceof OutboundFault)
