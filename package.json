@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "tsx watch src/main.ts",
+        "dev": "ORIGINS=${ORIGINS:-http://localhost:7380} tsx watch src/main.ts",
         "start": "tsx src/main.ts",
         "test": "vitest run",
         "test:watch": "vitest",

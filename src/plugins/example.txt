@@ -2076,7 +2076,7 @@ export type Services = {
 import { definePlugin } from "@onetype/stack-api-kit";
 
 import { Directory } from "./services/directory";
-import { everyGrant, Role } from "./schemas/Role";
+import { Role } from "./schemas/Role";
 import { readers } from "./tables/readers";
 
 import type { Services } from "./types/Services";
@@ -2114,11 +2114,9 @@ export default definePlugin.over<ReadersDb, Services>()("readers", {
         return role.success ? ctx.services.directory.grants(role.data) : [];
     },
 
-    mayGrant: everyGrant,
-
     setup: (ctx) =>
     {
-        ctx.log.info("readers ready", { grants: everyGrant.length });
+        ctx.log.info("readers ready");
     },
 });
 
@@ -2141,7 +2139,7 @@ what it grants.
 ```ts
 import { Readers } from "@plugins/readers";
 
-const reader = await Readers.of(ctx, key);
+const reader = await Readers.get.byKey(ctx, key);
 ```
 
 - `identifies` reads `x-key` and answers an identity, or nothing. At most one

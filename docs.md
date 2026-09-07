@@ -832,17 +832,26 @@ A hook answers a refusal or nothing, never data. `claims` is what the project
 attached, so every read of one checks its type. `identity` is undefined outside
 a request: in `setup`, and in a listener.
 
-## identify
+## Who is calling
+
+Two ways, and a plugin's wins.
 
 ```ts
-identify?: (kernel: Kernel) => (c: HonoContext) => Identity | undefined | Promise<Identity | undefined>
+identifies: (ctx, request) => Sessions.of(ctx, request.headers.get("cookie"))
+```
 
+A contract key, in the plugin that holds identity. At most one declares it,
+and `main.ts` then names nobody.
+
+```ts
 identify: (kernel) => async (c) => Sessions.of(kernel, c.req.header("cookie"))
 ```
 
-Given the started kernel, so it may reach a plugin's public API. Runs once per
-request. Nothing is a stranger, not a refusal; throwing is 401, never 500.
-Unset, every closed route is 401.
+A `start` option, for an application whose identity lives outside every
+plugin. Given the started kernel, so it may reach a public API.
+
+Either runs once per request. Nothing is a stranger, not a refusal; throwing
+is 401, never 500. With neither, every closed route is 401.
 
 ## Testing
 

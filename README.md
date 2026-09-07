@@ -49,3 +49,11 @@ The domains are dull on purpose: take the mechanics, never the model.
 
 `src/utils/example.txt` is the two shared utilities, the same way. Each is a
 folder folded into one file: every path and line, in reading order.
+
+```sh
+node tools/pack/examples.mjs unpack   # and pack, to fold them away again
+```
+
+Read them folded, or unpack to open them as files. Nothing needs unpacking:
+the stack starts with no examples at all, answering no routes but its own
+health.

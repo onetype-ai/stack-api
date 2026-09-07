@@ -23,19 +23,19 @@ describe("every plugin this project ships, brought up together", () =>
         expect(api.kernel.started()).toBe(true);
     });
 
-    test("and every permission a route needs is one some plugin may grant", async () =>
+    test("and every permission a route needs is one some plugin declares", async () =>
     {
         const plugins = await Plugins.discover();
 
         api = await startTestKernel({ plugins });
 
-        const grantable = new Set(plugins.flatMap((plugin) => plugin.definition.mayGrant ?? []));
+        const declared = new Set(plugins.flatMap((plugin) => Object.keys(plugin.definition.permissions ?? {})));
 
-        const ungrantable = api.kernel.routes()
+        const unreachable = api.kernel.routes()
             .flatMap((route) => route.requires)
-            .filter((permission) => !grantable.has(permission));
+            .filter((permission) => !declared.has(permission));
 
-        expect(ungrantable).toEqual([]);
+        expect(unreachable).toEqual([]);
     });
 
     test("with a budget on every closed route, so none is unbounded", async () =>
@@ -58,5 +58,22 @@ describe("every plugin this project ships, brought up together", () =>
             .map((route) => `${route.method} ${route.path}`);
 
         expect(credentialled).toEqual([]);
+    });
+});
+
+describe("an application carrying no plugin at all", () =>
+{
+    test("starts, because the examples are examples and the stack is not them", async () =>
+    {
+        api = await startTestKernel({ plugins: [] });
+
+        expect(api.kernel.started()).toBe(true);
+    });
+
+    test("and declares no route of its own, so the first one written is the first one there is", async () =>
+    {
+        api = await startTestKernel({ plugins: [] });
+
+        expect(api.kernel.routes()).toEqual([]);
     });
 });
