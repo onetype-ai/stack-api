@@ -107,7 +107,8 @@ reaches neither the emitter nor the others, so nothing marks it but
 ## Code is the authority
 
 Plugins are discovered from the folder, not a list. A cross-plugin import is
-checked against `dependsOn`, so an undeclared one fails.
+checked against `dependsOn` by `Project.checks()`, so an undeclared one fails
+the build rather than the boot: the kernel is handed values, never files.
 
 ==> #docs/procedures/absent.md
 
