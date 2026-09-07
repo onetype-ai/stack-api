@@ -222,9 +222,10 @@ route opened by accident then fails a test, not a review.
 
 ## Secrets
 
-`config` is validated and logged at startup, so nothing secret goes in it. A
-credential is read from the environment here and passed as a value: `identify`
-takes the session store, `outbound` the headers it sends.
+Never a secret in `config`: it is validated at startup, and it sits in the
+repository where everyone reads it. A credential is read from the environment
+here and passed as a value: `identify` takes the session store, `outbound` the
+headers it sends.
 
 ## Limits
 
