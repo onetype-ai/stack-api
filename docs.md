@@ -132,12 +132,6 @@ Needing something back means a public API call, which is what `dependsOn` is
 for. Packing an answer into the string works, and says the boundary is in the
 wrong place.
 
-## Emitting
-
-`kernel.events` holds `failures()` and nothing else. An event goes out through
-the context of the plugin that owns it: `ctx.events.emit` in a service, or
-`kernel.context("notes").events.emit` in a test.
-
 ## Another plugin's config
 
 There is no `ctx.configOf`. Config belongs to the plugin that declared it, and
@@ -155,6 +149,11 @@ rather than a shape.
 Every message the kit writes is English, and it formats nothing: no dates, no
 numbers, no currency. A caller needing otherwise translates a `Refusal` by its
 `code`.
+
+## What a name resolves to
+
+`outbound: "anywhere"` refuses every written form of a private address, never
+what a name resolves to.
 
 ## Retries on outbound calls
 
@@ -372,8 +371,8 @@ https  wss  redis  rediss  postgres  postgresql  mysql
 mongodb  mongodb+srv  amqp  amqps  grpc  grpcs
 ```
 
-`http`, `ws` and `ftp` are refused in the clear. There is no scheme for a
-disk, so a directory is config and nothing checks what a plugin does with it.
+`http`, `ws` and `ftp` are refused in the clear. `outbound: "anywhere"` is for
+hosts that are rows rather than constants.
 
 Declaring is not dialling: `ctx.fetch` speaks https and nothing else. What it
 cannot carry, a driver carries.
@@ -895,7 +894,7 @@ nobody hears. `settle()` waits for what one started; `logLines` explains a 500.
 `kernel.context(plugin, identity)` reaches a service, `kernel.run(command,
 input, identity)` a command, `kernel.events.failures()` the listeners that
 threw — the only thing `kernel.events` holds. Emitting goes through the
-context of the plugin that owns the event. **Leave `identity` out for a command using `forScope`:** a request's
+context of the plugin that owns the event: `kernel.context("notes").events.emit`. **Leave `identity` out for a command using `forScope`:** a request's
 scope is the caller's, so any identity makes it refuse.
 
 ==> #docs/stack.md
