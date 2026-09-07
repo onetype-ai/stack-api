@@ -7,7 +7,6 @@
 // one without the other leaves source reaching for a file that is not there.
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 import { Packer } from "./index.mjs";
 
@@ -21,7 +20,8 @@ const doing = asked[0] ?? "";
 
 for (const part of parts)
 {
-    const folded = part.demo.every((name) => !existsSync(join(process.cwd(), ...part.at.split("/"), name)));
+    const packer = new Packer(part);
+    const folded = part.demo.every((name) => !existsSync(packer.pathFor(name)));
 
     if (doing === "pack" && folded)
     {
@@ -33,5 +33,5 @@ for (const part of parts)
         continue;
     }
 
-    new Packer(part).ran(asked);
+    packer.ran(asked);
 }
