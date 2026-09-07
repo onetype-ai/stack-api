@@ -15,5 +15,10 @@ export default defineConfig({
         globals: true,
         include: ["src/**/tests/**/*.test.ts"],
         passWithNoTests: false,
+
+        // Project.checks() reads the tree from disk, so nothing it looks at is
+        // an import a watcher would follow. Without this, a boundary broken
+        // while dev runs stays green until verify.
+        forceRerunTriggers: ["**/src/**/*.ts"],
     },
 });

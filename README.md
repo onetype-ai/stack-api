@@ -15,7 +15,7 @@ shared.
 ## Running
 
 ```sh
-pnpm dev              # http://localhost:7280
+pnpm dev              # http://localhost:7280, watching the boundaries
 pnpm verify           # lint, typecheck, test
 
 PORT=7281 DATABASE_FILE=/tmp/mine/app.db pnpm dev   # a server of your own
