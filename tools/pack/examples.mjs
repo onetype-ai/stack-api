@@ -8,7 +8,7 @@
 
 import { existsSync } from "node:fs";
 
-import { Packer } from "./index.mjs";
+import { Packer } from "@onetype/stack-api-kit/packing";
 
 const parts = [
     { at: "src/plugins", demo: ["notes", "labels", "readers"], name: "plugin", tool: "plugins" },

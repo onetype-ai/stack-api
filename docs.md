@@ -74,8 +74,7 @@ never a branch inside an old one.
   counts: `measure("bytes")` makes bytes and gigabytes different types.
 - **Events** to announce what happened. Nothing comes back, nobody waits.
 - **Hooks** to let a participant refuse. One refuses by returning a reason;
-  throwing or never answering refuses too. Participating in your own hook is
-  an `if` written the hard way.
+  throwing or never answering refuses too.
 
 Refuses:
 
@@ -108,7 +107,7 @@ reaches neither the emitter nor the others, so nothing marks it but
 
 Plugins are discovered from the folder, not a list. A cross-plugin import is
 checked against `dependsOn` by `Project.checks()`, so an undeclared one fails
-the build rather than the boot: the kernel is handed values, never files.
+the build rather than the boot.
 
 ==> #docs/procedures/absent.md
 
@@ -222,9 +221,8 @@ route opened by accident then fails a test, not a review.
 
 ## Secrets
 
-Never a secret in `config`: it is validated at startup, and it sits in the
-repository where everyone reads it. A credential is read from the environment
-here and passed as a value: `identify` takes the session store, `outbound` the
+Never a secret in `config`: it sits in the repository where everyone reads
+it. A credential is read from the environment here and passed as a value: `identify` takes the session store, `outbound` the
 headers it sends.
 
 ## Limits
