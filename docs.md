@@ -758,7 +758,9 @@ Through the public surface, never the implementation.
 - **Routes**: every status one answers, through `kernel.handle`, so the
   permission check and both schemas run.
 - **Services**: what a caller gets, and what reached the database.
-- **The contract**: that the kernel accepts `plugin.ts`.
+- **The contract**: that the kernel accepts `plugin.ts`. Filter
+  `kernel.routes()` on `plugin`: a test that booted a dependency asserts about
+  its routes too, and goes red the day somebody else adds one.
 
 Test what a schema must reject, not what it takes. Per route: no caller id, a
 missing permission, a body failing the schema, a handler returning more than
