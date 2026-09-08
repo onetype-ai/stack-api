@@ -436,6 +436,7 @@ and `ctx.services` are: the kernel imports no driver to infer them.
   `requires` or `public`. `reads` names headers, `limit` a budget, `accepts` a
   form body.
 - `emits`, `listens`: announced and heard, each with a schema.
+- `channels`: what it pushes to whoever watches, and how far each goes.
 - `hooks`, `participates`: points it owns, and others' it joins.
 - `identifies`, `grants`, `mayGrant`: who is calling, what it means, and what
   startup holds that to. One plugin each.
@@ -453,7 +454,6 @@ Signatures are in `reference.md`.
 The kernel checks the owner's schema: an event against `emits`, a hook against
 `hooks`. A listener's own names only the type it is handed.
 
-A route is closed until `public: true`, which `requires` never accompanies.
 `output` names all that may leave; a header outside `reads` never reaches the
 handler.
 
