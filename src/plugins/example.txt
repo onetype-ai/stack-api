@@ -1502,6 +1502,14 @@ export default definePlugin.over<LabelsDb, Services>()("labels", {
 
     routes: [...labelRoutes],
 
+    channels: {
+        "labels.put": {
+            describe: "A word went on a note, for whoever is watching this reader's.",
+            schema: z.object({ noteId: z.uuid(), word: z.string() }),
+            reach: "scope",
+        },
+    },
+
     listens: {
         "notes.note.removed": defineListener<LabelsContext>()(
             z.object({ id: z.uuid(), ownerId: z.string() }),
@@ -1746,6 +1754,15 @@ export class Labels
     }
 
     async add(noteId: string, rawWord: string): Promise<Label>
+    {
+        const put = await this.#write(noteId, rawWord);
+
+        this.#ctx.push("labels.put", { noteId: put.noteId, word: put.word });
+
+        return put;
+    }
+
+    async #write(noteId: string, rawWord: string): Promise<Label>
     {
         const word = Text.comparable(rawWord);
 
@@ -2008,6 +2025,29 @@ describe("a command run for nobody", () =>
     });
 });
 
+describe("telling whoever is watching", () =>
+{
+    test("says the word went on, and how far that goes", async () =>
+    {
+        const noteId = await writeNote(api, "one");
+
+        await label(noteId, "green");
+
+        expect(api.pushed()).toMatchObject([{
+            channel: "labels.put",
+            message: { noteId, word: "green" },
+            reach: "scope",
+        }]);
+    });
+
+    test("and says nothing when the write was refused", async () =>
+    {
+        await label("44444444-4444-4444-8444-444444444444", "green");
+
+        expect(api.pushed()).toEqual([]);
+    });
+});
+
 ==> src/plugins/labels/tests/setup.ts
 
 import { createIdentity, startTestKernel } from "@onetype/stack-api-kit/testing";
@@ -2029,7 +2069,7 @@ export function whoever(permissions: readonly string[], id = reader): Identity
 
 export function startLabels(config: Record<string, unknown> = {}): Promise<TestKernel>
 {
-    return startTestKernel({ plugins: [labels, notes], config: { labels: config } });
+    return startTestKernel({ plugins: [labels, notes], config: { labels: config }, sockets: true });
 }
 
 export async function writeNote(api: TestKernel, title: string, who = whoever(["notes.write"])): Promise<string>

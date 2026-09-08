@@ -41,7 +41,8 @@ a procedure for each part. One file, so it reads without walking a tree.
 - `notes` shows what one plugin does alone: scoped rows, a cursor the database
   walks, text that matches and sorts in any language, a quota, a hook.
 - `labels` shows every way across a boundary: a public API call, an event
-  heard, a hook joined, a command run for nobody.
+  heard, a hook joined, a command run for nobody, a channel pushed to whoever
+  is watching.
 - `readers` says who is calling and what that means, so `main.ts` need not
   know which plugin holds a session.
 
