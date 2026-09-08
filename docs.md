@@ -396,6 +396,7 @@ if (cause instanceof OutboundFault)
 ```
 
 Reading only `code` retries a permanent 410 until the attempts run out.
+`retryAfter` says what a 429 asked.
 
 ## Own it
 
