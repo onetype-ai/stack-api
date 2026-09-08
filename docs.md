@@ -219,7 +219,8 @@ nothing else may. Signatures are in `reference.md`.
 
 `kernel.routes()` answers a `Registration` per route: plugin, method, path,
 `requires`, `public`, `limit`, `reads`. Assert which are public, that every
-closed one carries a budget, and that no `reads` names a credential header. A
+closed one carries a budget (`limit` is optional), and that no `reads` names a
+credential header. A
 route opened by accident then fails a test, not a review.
 
 ## Secrets
@@ -230,9 +231,8 @@ headers it sends.
 
 ## Limits
 
-`limits: false` allows every request and says so loudly at startup. The
-numbers stay in the routes: how many attempts are reasonable is a decision,
-not a setting. Off where nobody attacks.
+The numbers stay in the routes: how many attempts are reasonable is a
+decision, not a setting. `limits: false` where nobody attacks.
 
 ## Sessions
 
