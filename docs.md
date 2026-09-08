@@ -883,7 +883,7 @@ An unknown option is refused, not ignored. `config` is keyed by plugin.
 every stranger shares one counter.
 
 Answers `{ kernel, logLines, outboundCalls(), emittedEvents(), settle(), due(),
-stop() }`:
+drain(), stop() }`:
 
 ```ts
 logLines        [{ level, plugin, line, ...what ctx.log was given }]
@@ -893,6 +893,8 @@ emittedEvents() [{ plugin, event, payload }]
 
 `emittedEvents()` names the field `event`, not `name`, and records an emit
 nobody hears. `settle()` waits for what one started; `logLines` explains a 500.
+`due()` runs one turn and answers how many it took, `drain(most = 20)` runs
+until nothing is left, which is what a chain of commands needs.
 
 `kernel.context(plugin, identity)` reaches a service, `kernel.run(command,
 input, identity)` a command, `kernel.events.failures()` the listeners that
