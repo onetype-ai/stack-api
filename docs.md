@@ -20,8 +20,11 @@ pnpm verify           # lint, typecheck, test
 ```
 
 `PORT`, `DATABASE_FILE`, `ORIGINS`, `BODY_BYTES`, `LOG_LEVEL`, `OUTBOX`,
-`SCHEDULE`, `BEHIND_PROXY` and `WATCH_SECONDS` configure it. Everything defaults except
+`SCHEDULE`, `SOCKETS`, `BEHIND_PROXY` and `WATCH_SECONDS` configure it. Everything defaults except
 `ORIGINS`, which is empty: no browser origin is allowed until one is named.
+
+`SOCKETS` is the one that starts on: a front-end that opens one carries its
+requests over it, and falls back to http when it cannot.
 
 `BEHIND_PROXY` reads `x-forwarded-for` as the rate limit's key. On without a
 proxy, a caller invents a new key per request.

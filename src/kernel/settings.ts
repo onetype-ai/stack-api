@@ -7,6 +7,7 @@ export type Settings = {
     database: string;
     outbox: boolean;
     schedule: boolean;
+    sockets: boolean;
     origins: readonly string[];
     bodyBytes: number;
 
@@ -26,6 +27,7 @@ export const Settings = {
             database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
             outbox: Env.flag("OUTBOX", false),
             schedule: Env.flag("SCHEDULE", false),
+            sockets: Env.flag("SOCKETS", true),
             origins: Env.list("ORIGINS"),
             bodyBytes: Env.number("BODY_BYTES", 1_000_000, 1),
             behindProxy: Env.flag("BEHIND_PROXY", false),

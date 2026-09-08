@@ -17,12 +17,14 @@
         "better-sqlite3": "13.0.3",
         "drizzle-orm": "0.45.2",
         "hono": "4.13.5",
+        "ws": "8.21.3",
         "zod": "4.5.4"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
         "@types/better-sqlite3": "7.6.13",
         "@types/node": "26.4.0",
+        "@types/ws": "8.18.1",
         "eslint": "10.9.1",
         "tsx": "4.20.6",
         "typescript": "5.9.3",

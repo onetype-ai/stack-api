@@ -24,7 +24,7 @@ PORT=7281 DATABASE_FILE=/tmp/mine/app.db pnpm dev   # a server of your own
 Two people sharing one need not: a restart empties the database under both.
 
 `PORT`, `DATABASE_FILE`, `ORIGINS`, `BODY_BYTES`, `LOG_LEVEL`, `OUTBOX`,
-`SCHEDULE`, `BEHIND_PROXY` and `WATCH_SECONDS` configure it. Everything
+`SCHEDULE`, `SOCKETS`, `BEHIND_PROXY` and `WATCH_SECONDS` configure it. Everything
 defaults but `ORIGINS`, which starts empty: no browser origin is allowed until
 one is named, which is the safe default rather than a missing one.
 

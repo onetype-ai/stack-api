@@ -1,6 +1,9 @@
 import { pathToFileURL } from "node:url";
 
-import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { serve, upgradeWebSocket } from "@hono/node-server";
+import type { WebSocketServerLike } from "@hono/node-server";
+import { WebSocketServer } from "ws";
 import { start } from "@onetype/stack-api-kit";
 import { Log } from "./kernel/logger";
 import { Plugins } from "./kernel/plugins";
@@ -35,6 +38,7 @@ class Api
             database: { file: settings.database },
             outbox: settings.outbox,
             schedule: settings.schedule,
+            sockets: settings.sockets,
             http: {
                 origins: settings.origins,
                 bodyBytes: settings.bodyBytes,
@@ -54,7 +58,7 @@ class Api
             process.exit(1);
         });
 
-        const server = serve({ fetch: api.fetch, port: settings.port });
+        const server = this.listen(api, settings.port);
 
         if (settings.watchSeconds > 0)
         {
@@ -64,6 +68,86 @@ class Api
         log.info("listening", { port: settings.port, routes: api.kernel.routes().length });
 
         this.closeOnSignal(server, api, log);
+    }
+
+    listen(api: RunningApp, port: number): Server
+    {
+        const joining = api.sockets;
+
+        if (joining === undefined)
+        {
+            return serve({ fetch: api.fetch, port });
+        }
+
+        const app = new Hono();
+
+        app.get("/ws", upgradeWebSocket(() =>
+        {
+            let joined: ReturnType<typeof joining.joined> | undefined;
+
+            return {
+                onOpen: (_event, socket) =>
+                {
+                    joined = joining.joined(undefined, (text: string) =>
+                    {
+                        socket.send(text);
+                    });
+                },
+
+                onMessage: (event, socket) =>
+                {
+                    const said = (event as { data?: unknown }).data;
+
+                    void this.carried(api, joined, String(said), (text: string) =>
+                    {
+                        socket.send(text);
+                    });
+                },
+
+                onClose: () =>
+                {
+                    joined?.left();
+                },
+            };
+        }));
+
+        app.all("*", (c) => api.fetch(c.req.raw));
+
+        return serve({ fetch: app.fetch, port, websocket: { server: new WebSocketServer({ noServer: true }) as unknown as WebSocketServerLike } });
+    }
+
+    async carried(api: RunningApp, joined: { listen: (channel: string) => boolean; forget: (channel: string) => void } | undefined, text: string, send: (text: string) => void): Promise<void>
+    {
+        const asked = JSON.parse(text) as {
+            id?: string; method?: string; path?: string;
+            query?: Record<string, unknown>; body?: Record<string, unknown>;
+            headers?: Record<string, string>;
+            subscribe?: string; unsubscribe?: string;
+        };
+
+        if (asked.subscribe !== undefined)
+        {
+            joined?.listen(asked.subscribe);
+
+            return;
+        }
+
+        if (asked.unsubscribe !== undefined)
+        {
+            joined?.forget(asked.unsubscribe);
+
+            return;
+        }
+
+        const answer = await api.kernel.handle({
+            method: (asked.method ?? "GET") as Parameters<typeof api.kernel.handle>[0]["method"],
+            path: asked.path ?? "/",
+            input: { ...asked.query, ...asked.body },
+            headers: asked.headers ?? {},
+            from: "socket",
+        });
+
+        send(JSON.stringify({ id: asked.id, status: answer.status, body: answer.body }));
     }
 
     unseen(failures: readonly Failure[], read: number): { fresh: readonly Failure[]; read: number }
