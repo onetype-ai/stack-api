@@ -122,7 +122,8 @@ Each is deliberate, and each is found by trying unless it is written down.
 
 The kit reads no cookie. A route answers `x-session-key` with
 `x-session-expires`, or `x-session-end`, and `session: { name, secure }` in
-`start` makes the cookie; see `deploy.md`. A plugin that never learns what a
+`start` makes the cookie, which is what a browser wants: CORS hides the header
+from a script anyway. A plugin that never learns what a
 cookie is serves a token client unchanged.
 
 ## What a hook may answer
