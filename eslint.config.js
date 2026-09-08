@@ -71,7 +71,7 @@ export default tseslint.config(
                     patterns: [{
                         group: ["@plugins/*", "@plugins/*/**", "@onetype/stack-api-kit", "@onetype/stack-api-kit/*"],
                         message: "A util is pure and domain-free: it takes values and answers values. Needing a plugin or a ctx means it is a service, and a service belongs to the plugin that owns it.",
-                    }],
+                    }, holds],
                 },
             ],
         },
