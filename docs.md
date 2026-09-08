@@ -120,11 +120,11 @@ Each is deliberate, and each is found by trying unless it is written down.
 
 ## Sessions and cookies
 
-The kit reads no cookie. A route answers `x-session-key` with
-`x-session-expires`, or `x-session-end`, and `session: { name, secure }` in
-`start` makes the cookie, which is what a browser wants: CORS hides the header
-from a script anyway. A plugin that never learns what a
-cookie is serves a token client unchanged.
+A route answers `x-session-key` with `x-session-expires`, or `x-session-end`,
+and `session: { name, secure }` in `start` makes the cookie, which is what a
+browser wants: CORS hides the header from a script anyway. It reads that
+cookie back into the header before anything sees the request, so a plugin that
+never learns what a cookie is serves a token client unchanged.
 
 ## What a hook may answer
 
