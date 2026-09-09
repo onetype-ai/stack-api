@@ -172,30 +172,33 @@ One test runs over the whole repository. Each check fails the build, answering
 
 ## A boundary crossed undeclared
 
-An import of another plugin that `dependsOn` does not name, or one reaching
-past its `index.ts`.
-
 A test may name `@plugins/<other>/plugin`, the contract itself, for anything
 it has to boot. Nothing deeper, and production code gets no exemption.
 
 ## A field nothing reads
 
-An exported type declaring a field no production file in its own plugin reads.
 A field for later is not a field yet.
 
-## A folder with no contract
+## A crossing out of the process
 
-A directory under `src/plugins/` with no `plugin.ts`.
+An import of `child_process`, `worker_threads`, `vm` or `cluster`. `outbound`
+narrows a host; nothing narrows a program. A plugin whose job it is names
+itself in `leaving`.
+
+## A util written twice
+
+A name and signature two plugins each keep under `utils/`. Bodies are not
+compared: three `searchable(raw: string): string` disagreed and none matched.
+Two answering different questions say so in their types, or in `sharing`.
 
 ## A document that outgrew its point
 
-Anything under `#docs/` over 1800 characters, and any plugin with no
-`usage.md`. Every key the contract accepts must be named in
+Every key the contract accepts must be named in
 `procedures/plugin/contract.md`.
 
-Only while the documents are a folder: packed, there is nothing to walk. The
-limit is for whoever writes, and one that has to be measured is one nobody
-was watching anyway.
+The size limit runs only while the documents are a folder: packed, there is
+nothing to walk. It is for whoever writes, and one that has to be measured is
+one nobody was watching anyway. `checking.limit` moves the number.
 
 ## What it does not look at
 
@@ -203,8 +206,6 @@ was watching anyway.
   field does not count, and only the declaring plugin is searched.
 - **Only `#docs/`.** The size limit never reaches a plugin's own `usage.md`.
   Hold that limit yourself.
-- `checking.limit` moves the number, and the size check sleeps while `#docs`
-  is packed.
 - `src/utils` is checked for unread fields too, not only `src/plugins`.
 - Lint refuses a util, in `src/utils` or a plugin's own, that imports a plugin
   or the kit: wanting a `ctx` makes it a service.
@@ -302,8 +303,8 @@ kernel checks the emitter's, so drift hands your handler a value that is not
 what you said instead of refusing it. The emitter's `version` says it moved.
 
 A listener runs after the caller, so `await api.settle()` before asserting.
-One that throws reaches nobody, leaving the test green and the state wrong, so
-assert `api.kernel.events.failures()` is empty.
+One that throws is raised there, naming it: read `kernel.events.failures()`
+first to expect one.
 
 ==> #docs/procedures/later.md
 
@@ -337,7 +338,7 @@ scheduled command declares no `requires`: no permission can be granted to
 nobody.
 
 An attempt that throws goes back, counted, waiting longer each time up to a
-minute, then is abandoned with a log line. Key what it writes on the input.
+minute, then is abandoned. Key what it writes on the input.
 
 ## Repeating
 
@@ -352,9 +353,60 @@ Ask only while something waits. A fixed number of times carries the count in
 the input, so it survives a restart. There is no cron syntax and the kit has
 no timezone: for an hour each day you work out the seconds yourself.
 
+Giving up ends the repetition: the run that would have asked again never
+finished, and nothing is waiting to be told. `kernel.work.abandoned()` is
+where a deployment and a test learn that the sweeping stopped.
+
 ## Expiry is a read, not an event
 
 A hold past its moment is one your reads ignore; the command only tidies up.
+
+==> #docs/procedures/naming.md
+
+# Procedure: naming
+
+A name is read far more often than it is written, and by somebody who has
+only the name.
+
+## The test
+
+Put **the** in front and see whether you get a thing. Put **is** in front and
+see whether you get a state. A word that only fits after **currently** is a
+verb doing a noun's job.
+
+```
+the invoice     the source      the session      names
+is overdue      is indexed                       states
+currently sending                                neither
+```
+
+## What a past participle costs
+
+`Held`, `Said`, `Written` and `Spoken` name what happened to something, never
+what it is. Four plugins each calling a private shape `Held` is four different
+things under one word, and a reader who learns one learns nothing about the
+next. Name the thing: `Card`, `Question`, `Entry`, `Answer`.
+
+The same goes for a class: `Counting` is what the code does, `Prices` is what
+it knows.
+
+## One word, one idea
+
+Two plugins that both declare `Role` and disagree about what a role may be
+hold one idea in two places. `Project.checks()` refuses that, because the day
+one gains a value the other refuses a payload carrying it. Let one declare it
+and the other reach for it through `dependsOn`.
+
+Two that share nothing but the word are two ideas, and both may keep it: a
+role among accounts and a role in a conversation are not the same question.
+Name such a pair in `apart`.
+
+## Refuses
+
+- A pattern name where a concrete noun exists: `Manager`, `Handler`, `Helper`.
+- `get` on a reader: `failures()`, not `getFailures()`.
+- `data`, `res`, `tmp`, `obj`, `val`, `item`. A variable resisting a name is
+  holding two things.
 
 ==> #docs/procedures/plugin/connections.md
 
@@ -504,9 +556,8 @@ browser send straight to the store, keep the row. Measured against base64:
 A permission says what a caller may do, never which rows are theirs. When the
 answer is one column on every table, declare it once.
 
-This is not a mechanical guarantee. The kit writes the condition; nothing
-refuses a query that forgets to call it. `ctx.db` is the other guarantee, and
-it does refuse another plugin's table at compile time. Do not confuse them.
+This is not a mechanical guarantee, unlike `ctx.db`: the kit writes the
+condition, and nothing refuses a query that forgets to call it.
 
 ## Declaring
 
@@ -518,21 +569,13 @@ scope: {
 },
 ```
 
-Any declared column works, the primary key included: a tenants table scoped on
-its own `id` is usual. Startup refuses a scope naming a table the plugin does
-not own, or none at all.
+Any declared column works, the primary key included.
 
-## Three ways in
+## Acting for a scope
 
-```
-Request:       scoped / stamped, the claim decides.
-Listener:      forScope, the payload carries the scope.
-Public route:  scoped and stamped are 403. forScope works.
-```
-
-The test is the caller, never the route. `forScope` throws whenever
-`ctx.identity` exists: run such a command with none, `kernel.run(name,
-input)`, or let the schedule run it.
+The test is the caller, never the route: `scoped` and `stamped` read the
+claim, and where nobody is calling `forScope` names the scope instead. Run
+such a command with no identity, or let the schedule run it.
 
 A knife: an unknown caller chooses whose rows they land in. Use it where the
 action proves identity, and never let the body name the scope.
@@ -544,10 +587,22 @@ action proves identity, and never let the body name the scope.
 .values({ ...row, ...ctx.stamped("items") })
 ```
 
-`ctx.scoped` answers the condition for the table you name. Each has its own:
-one table's against another asks for a column that is not there. Spread
-`stamped` last, or a caller writes a row into somebody else's scope. No claim
-is 403, never a default.
+`ctx.scoped` answers the condition for the table you name, each its own. Spread
+`stamped` last, or a caller writes a row into somebody else's scope.
+
+## When it is not a column
+
+Ownership that is a question is no `where` the kit can write: a row reached
+through a seat, or a neighbour's answer. Ask, then narrow by what came back,
+in one private method the whole service calls.
+
+```ts
+const mine = await ctx.use<Reached>("workspace").workspaces.mine();
+.where(and(eq(bots.id, id), inArray(bots.workspaceId, mine)))
+```
+
+Spelled out per query it goes missing at one, and that read compiles, passes
+lint, and answers another's rows.
 
 ## Rules
 
@@ -584,10 +639,24 @@ await inside.db.insert(notices).values({ ...row, sequence: (highest?.at ?? 0) + 
 That number is the cursor a page walks, indexed with the scope column first.
 No offsets, and no stored counter: `COUNT(*)`.
 
+## Uniqueness is the index answering
+
+Reading first to see whether a row exists is the race this file exists to
+avoid: two requests both read nothing and both write. Let the index refuse,
+and read whether it did.
+
+```ts
+const [made] = await inside.db.insert(accounts).values(row)
+    .onConflictDoNothing().returning({ id: accounts.id });
+
+if (made === undefined) { return undefined; }   // the index refused: taken
+```
+
+A generated id needs none of this: nothing collides with it.
+
 ## A migration is history
 
-`NNNN-name.sql`, run once in dependency order and recorded. Editing one that
-already ran refuses at startup: add a new file instead.
+`NNNN-name.sql`, run once in dependency order and recorded.
 
 ## Rules
 
@@ -606,6 +675,7 @@ already ran refuses at startup: add a new file instead.
 plugins/<name>/
 ├── plugin.ts       the contract: all that crosses the boundary
 ├── index.ts        the public API: what another plugin may call
+├── usage.md        what it is for; the build refuses a plugin without one
 ├── schemas/        a zod schema and what parses against it
 ├── types/          shapes describing code alone
 ├── tables/         one table a file
@@ -620,14 +690,9 @@ No `index.ts` inside a folder: a plugin is private throughout.
 
 ## Where code belongs
 
-Stop at the first yes:
-
-1. Crosses a boundary, so it needs a schema → `schemas/`
-2. Describes only code, no schema → `types/`
-3. Describes a table → `tables/`
-4. Answers a request → `routes/`
-5. Knows the domain, not the request → `services/`
-6. Pure and domain-free → `utils/`
+The tree says what each folder holds. This says which to try first, and you
+stop at the first yes: `schemas/` if it crosses a boundary, then `types/`,
+`tables/`, `routes/`, `services/`, `utils/`.
 
 A route handler holds no logic: it reads input and calls a service.
 
@@ -772,7 +837,7 @@ output carrying a hash, an error naming a table.
 ## Assembling
 
 A plugin boots one it depends on, or listens to, by naming
-`@plugins/<name>/plugin`. Only a test may, and nothing deeper.
+`@plugins/<name>/plugin`.
 
 In-memory SQLite with the real migrations. Never reach the network; `answers`
 replies to an outbound call instead.
@@ -786,11 +851,17 @@ Break the behaviour: remove the guard, widen the output schema, delete the
 emit. Watch it fail naming the real cause, then put it back. A green check
 never broken proves nothing.
 
+Break it both ways. Widening a role is the break a written-out permission
+list cannot see, because it proves that copy against itself: `granted(claims)`
+asks whoever declares `grants` instead. And a guard inside a service is
+unreachable through a route that already refuses, so prove that one through
+`kernel.context(plugin)`, which reaches the service with no request at all.
+
 ==> #docs/reference.md
 
 # Reference
 
-Not enough? Every signature is in the kit's `dist/types.d.ts`.
+The ones a reader guesses wrong. Everything else reads as it is named.
 
 ## Refusal and Reply
 
@@ -817,10 +888,9 @@ import { definePlugin, defineRoute, Refusal } from "@onetype/stack-api-kit";
 `defineListener`, `defineParticipant` and `defineCommand` are the same shape:
 called once for the context, then the schema and the handler.
 
-Two entry points, and nothing is in both. `@onetype/stack-api-kit` holds
-everything a plugin or `main.ts` uses at runtime, faults included:
-`KernelFault`, `OutboundFault`, `Kernel`, `Identity`, `Endpoint`. Its `/testing`
-holds what only a test uses: `startTestKernel`, `createIdentity`, `Project`.
+Two entry points, and nothing is in both: `/testing` holds what only a test
+uses, the root everything else. Reaching into the wrong one is a type error
+naming the member.
 
 `equalsInConstantTime(left, right)` compares secrets in constant time.
 
@@ -840,6 +910,14 @@ A hook answers a refusal or nothing, never data. `claims` is what the project
 attached, so every read of one checks its type. `identity` is undefined outside
 a request: in `setup`, and in a listener.
 
+`tx` hands its callback a context to use instead of the outer one; `write`
+hands it nothing and takes `() => Promise<T>`, so a parameter there is a type
+error rather than an undefined at runtime.
+
+`sum()` answers a string, and null over no rows, where `count()` answers a
+number: `total + 1` concatenates. Coerce it. An output schema declaring
+`z.number()` refuses the string, but only once the route is called.
+
 ## Who is calling
 
 Two ways, and a plugin's wins.
@@ -850,6 +928,22 @@ identifies: (ctx, request) => Sessions.of(ctx, request.headers.get("cookie"))
 
 A contract key, in the plugin that holds identity. At most one declares it,
 and `main.ts` then names nobody.
+
+```ts
+identifies: (ctx, request) => Omit<Identity, "permissions"> | undefined
+grants:     (ctx, who: Omit<Identity, "permissions">) => readonly string[]
+mayGrant:   readonly string[]
+```
+
+`identifies` answers no permission, and one written there is dropped without
+a word: `grants` fills them, so nobody grants themselves. `mayGrant` is the
+ceiling startup reads; naming none means any declared permission may be
+granted.
+
+Declaring somebody else's permission is refused by name. **Answering** one
+from `grants` is not, and is how a single plugin decides what being signed in
+means everywhere. Requiring one on a route needs its owner in `dependsOn`;
+`mayGrant` does not, or whoever grants would depend on every plugin there is.
 
 ```ts
 identify: (kernel) => async (c) => Sessions.of(kernel, c.req.header("cookie"))
@@ -871,6 +965,7 @@ const api = await startTestKernel({
 });
 
 const owner = createIdentity(["items.read"], ownerId, { tenantId: "acme" });
+const real = await api.granted({ role: "owner", tenantId: "acme" }, ownerId);
 
 await api.kernel.handle({
     method: "GET", path: "/items/:id", input: { id }, identity: owner,
@@ -882,10 +977,13 @@ An unknown option is refused, not ignored. `config` is keyed by plugin.
 `OutboundFault` codes: `TIMEOUT`, `ABORTED`, `NETWORK`, `TOO_LARGE`,
 `MALFORMED`, `STATUS`. `handle` takes the declared path, parameters in
 `input`. `from` is what a rate limit counts an anonymous caller by: without it
-every stranger shares one counter.
+every stranger shares one counter. `granted(claims, id?)` answers an identity
+whose permissions came from whoever declares `grants`, rather than from a list
+the test wrote: widen a role and an assertion that a caller is refused goes
+red, which a written-out list cannot do. It throws where no plugin grants.
 
-Answers `{ kernel, logLines, outboundCalls(), emittedEvents(), settle(), due(),
-drain(), stop() }`:
+Answers `{ kernel, logLines, outboundCalls(), emittedEvents(), granted(),
+settle(), due(), drain(), stop() }`:
 
 ```ts
 logLines        [{ level, plugin, line, ...what ctx.log was given }]
@@ -900,7 +998,8 @@ until nothing is left, which is what a chain of commands needs.
 
 `kernel.context(plugin, identity)` reaches a service, `kernel.run(command,
 input, identity)` a command, `kernel.events.failures()` the listeners that
-threw — the only thing `kernel.events` holds. Emitting goes through the
+threw and `kernel.work.abandoned()` the scheduled commands that ran out of
+attempts, which is the only report a repetition that ended ever makes. Emitting goes through the
 context of the plugin that owns the event: `kernel.context("notes").events.emit`. **Leave `identity` out for a command using `forScope`:** a request's
 scope is the caller's, so any identity makes it refuse.
 
