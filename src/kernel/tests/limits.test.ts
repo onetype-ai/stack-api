@@ -40,7 +40,7 @@ describe("what a watch says about listeners that failed", () =>
 
     test("is everything it has not read before", () =>
     {
-        const { fresh, read } = api.unseen([failure(10), failure(20)], 0);
+        const { fresh, read } = api.freshFailures([failure(10), failure(20)], 0);
 
         expect(fresh).toHaveLength(2);
         expect(read).toBe(2);
@@ -50,21 +50,21 @@ describe("what a watch says about listeners that failed", () =>
     {
         const failures = [failure(10), failure(20)];
 
-        expect(api.unseen(failures, api.unseen(failures, 0).read).fresh).toEqual([]);
+        expect(api.freshFailures(failures, api.freshFailures(failures, 0).read).fresh).toEqual([]);
     });
 
     test("including one that failed in the same millisecond as the last", () =>
     {
-        const { read } = api.unseen([failure(10)], 0);
-        const { fresh } = api.unseen([failure(10), failure(10)], read);
+        const { read } = api.freshFailures([failure(10)], 0);
+        const { fresh } = api.freshFailures([failure(10), failure(10)], read);
 
         expect(fresh).toHaveLength(1);
     });
 
     test("but does notice one that fails again after that", () =>
     {
-        const { read } = api.unseen([failure(10)], 0);
-        const { fresh } = api.unseen([failure(10), failure(30)], read);
+        const { read } = api.freshFailures([failure(10)], 0);
+        const { fresh } = api.freshFailures([failure(10), failure(30)], read);
 
         expect(fresh).toHaveLength(1);
         expect(fresh[0]?.at).toBe(30);
@@ -72,6 +72,6 @@ describe("what a watch says about listeners that failed", () =>
 
     test("and says nothing at all when nothing broke", () =>
     {
-        expect(api.unseen([], 0)).toEqual({ fresh: [], read: 0 });
+        expect(api.freshFailures([], 0)).toEqual({ fresh: [], read: 0 });
     });
 });

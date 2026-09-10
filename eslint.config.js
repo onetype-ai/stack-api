@@ -55,9 +55,17 @@ export default tseslint.config(
     },
 
     {
+        files: ["src/plugins/*/schemas/**/*.ts"],
+        rules: boundary(
+            "A schema parses and answers a value. Reaching a service, a table, a route or the kit beyond Refusal makes what validates depend on what it validates for.",
+            [{ group: ["../services/*", "../tables/*", "../routes/*", "../types/*", "@plugins/*", "@plugins/*/**"] }],
+        ),
+    },
+
+    {
         files: ["src/plugins/*/tests/**/*.ts"],
         rules: boundary(
-            "A test may reach a plugin's contract at \"@plugins/<name>/plugin\", and nothing deeper. Whether it may reach that plugin at all is checked by Project.checks().",
+            "A test may reach another plugin's contract at \"@plugins/<name>/plugin\", and nothing deeper; its own it reaches relatively. Whether it may reach that plugin at all is checked by Project.checks().",
             [{ group: ["@plugins/*/*/**", "@plugins/*/!(plugin)"] }],
         ),
     },

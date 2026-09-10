@@ -9,7 +9,7 @@ import { Log } from "./kernel/logger";
 import { Plugins } from "./kernel/plugins";
 import { Settings } from "./kernel/settings";
 
-import type { Failure, Logger, RunningApp } from "@onetype/stack-api-kit";
+import type { ListenerFailure, Logger, RunningApp } from "@onetype/stack-api-kit";
 
 type Server = ReturnType<typeof serve>;
 
@@ -83,12 +83,12 @@ class Api
 
         app.get("/ws", upgradeWebSocket(() =>
         {
-            let joined: ReturnType<typeof joining.joined> | undefined;
+            let subscription: ReturnType<typeof joining.subscribe> | undefined;
 
             return {
                 onOpen: (_event, socket) =>
                 {
-                    joined = joining.joined(undefined, (text: string) =>
+                    subscription = joining.subscribe(undefined, (text: string) =>
                     {
                         socket.send(text);
                     });
@@ -98,7 +98,7 @@ class Api
                 {
                     const said = (event as { data?: unknown }).data;
 
-                    void this.carried(api, joined, String(said), (text: string) =>
+                    void this.handleSocketMessage(api, subscription, String(said), (text: string) =>
                     {
                         socket.send(text);
                     });
@@ -106,7 +106,7 @@ class Api
 
                 onClose: () =>
                 {
-                    joined?.left();
+                    subscription?.close();
                 },
             };
         }));
@@ -116,41 +116,41 @@ class Api
         return serve({ fetch: app.fetch, port, websocket: { server: new WebSocketServer({ noServer: true }) as unknown as WebSocketServerLike } });
     }
 
-    async carried(api: RunningApp, joined: { listen: (channel: string) => boolean; forget: (channel: string) => void } | undefined, text: string, send: (text: string) => void): Promise<void>
+    async handleSocketMessage(api: RunningApp, subscription: { listenTo: (channel: string) => boolean; stopListening: (channel: string) => void } | undefined, text: string, send: (text: string) => void): Promise<void>
     {
-        const asked = JSON.parse(text) as {
+        const request = JSON.parse(text) as {
             id?: string; method?: string; path?: string;
             query?: Record<string, unknown>; body?: Record<string, unknown>;
             headers?: Record<string, string>;
             subscribe?: string; unsubscribe?: string;
         };
 
-        if (asked.subscribe !== undefined)
+        if (request.subscribe !== undefined)
         {
-            joined?.listen(asked.subscribe);
+            subscription?.listenTo(request.subscribe);
 
             return;
         }
 
-        if (asked.unsubscribe !== undefined)
+        if (request.unsubscribe !== undefined)
         {
-            joined?.forget(asked.unsubscribe);
+            subscription?.stopListening(request.unsubscribe);
 
             return;
         }
 
         const answer = await api.kernel.handle({
-            method: (asked.method ?? "GET") as Parameters<typeof api.kernel.handle>[0]["method"],
-            path: asked.path ?? "/",
-            input: { ...asked.query, ...asked.body },
-            headers: asked.headers ?? {},
+            method: (request.method ?? "GET") as Parameters<typeof api.kernel.handle>[0]["method"],
+            path: request.path ?? "/",
+            input: { ...request.query, ...request.body },
+            headers: request.headers ?? {},
             from: "socket",
         });
 
-        send(JSON.stringify({ id: asked.id, status: answer.status, body: answer.body }));
+        send(JSON.stringify({ id: request.id, status: answer.status, body: answer.body }));
     }
 
-    unseen(failures: readonly Failure[], read: number): { fresh: readonly Failure[]; read: number }
+    freshFailures(failures: readonly ListenerFailure[], read: number): { fresh: readonly ListenerFailure[]; read: number }
     {
         return { fresh: failures.slice(read), read: failures.length };
     }
@@ -168,7 +168,7 @@ class Api
                 read = 0;
             }
 
-            const { fresh, read: now } = this.unseen(failures, read);
+            const { fresh, read: now } = this.freshFailures(failures, read);
 
             read = now;
 

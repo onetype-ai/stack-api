@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
 import { definePlugin } from "@onetype/stack-api-kit";
-import type { Answered } from "@onetype/stack-api-kit";
+import type { IdentifiedCaller } from "@onetype/stack-api-kit";
 import { startTestKernel } from "@onetype/stack-api-kit/testing";
 
 const guarded = definePlugin("probe", {
@@ -45,7 +45,7 @@ describe("the three keys reference.md writes signatures for", () =>
     {
         // @ts-expect-error permissions is `never` on what identifies answers:
         // grants fills them, and a plugin naming its own would grant itself any.
-        const wrong = { id: "one", claims: {}, permissions: ["probe.write"] } satisfies Answered;
+        const wrong = { id: "one", claims: {}, permissions: ["probe.write"] } satisfies IdentifiedCaller;
 
         expect(wrong.id).toBe("one");
     });
