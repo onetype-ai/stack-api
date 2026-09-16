@@ -1,26 +1,26 @@
 import type { Logger } from "@onetype/stack-api-kit";
 import type { Level } from "./settings";
 
-type Write = (level: Level, line: string, about?: Readonly<Record<string, unknown>>) => void;
+type Write = (level: Level, message: string, about?: Readonly<Record<string, unknown>>) => void;
 
 export const Log = {
-    order: { debug: 0, info: 1, warn: 2, error: 3 } as Readonly<Record<Level, number>>,
+    severity: { debug: 0, info: 1, warn: 2, error: 3 } as Readonly<Record<Level, number>>,
 
-    line: (level: Level, line: string, about?: Readonly<Record<string, unknown>>): string =>
+    line: (level: Level, message: string, about?: Readonly<Record<string, unknown>>): string =>
     {
-        const record = { ...about, at: new Date().toISOString(), level, line };
+        const record = { ...about, at: new Date().toISOString(), level, line: message };
 
         try
         {
-            return `${JSON.stringify(record, Log.readable)}\n`;
+            return `${JSON.stringify(record, Log.forJson)}\n`;
         }
         catch
         {
-            return `${JSON.stringify({ at: record.at, level, line, about: "unreadable" })}\n`;
+            return `${JSON.stringify({ at: record.at, level, line: message, about: "unreadable" })}\n`;
         }
     },
 
-    readable: (_key: string, value: unknown): unknown =>
+    forJson: (_key: string, value: unknown): unknown =>
     {
         if (value instanceof Error)
         {
@@ -32,30 +32,30 @@ export const Log = {
 
     forLevel: (level: Level = "info"): Logger =>
     {
-        const write: Write = (at, line, about) =>
+        const write: Write = (writeLevel, message, about) =>
         {
-            if ((Log.order[at] ?? 0) >= (Log.order[level] ?? 0))
+            if ((Log.severity[writeLevel] ?? 0) >= (Log.severity[level] ?? 0))
             {
-                process.stdout.write(Log.line(at, line, about));
+                process.stdout.write(Log.line(writeLevel, message, about));
             }
         };
 
         return {
-            debug: (line, about) =>
+            debug: (message, about) =>
             {
-                write("debug", line, about);
+                write("debug", message, about);
             },
-            info: (line, about) =>
+            info: (message, about) =>
             {
-                write("info", line, about);
+                write("info", message, about);
             },
-            warn: (line, about) =>
+            warn: (message, about) =>
             {
-                write("warn", line, about);
+                write("warn", message, about);
             },
-            error: (line, about) =>
+            error: (message, about) =>
             {
-                write("error", line, about);
+                write("error", message, about);
             },
         };
     },

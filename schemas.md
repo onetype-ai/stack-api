@@ -18,6 +18,8 @@
 
 ### definePlugin<Schema extends z.ZodType, Services = unknown, Db = unknown>(name: string, definition: Definition<Schema, Services, Db>): Plugin
 
+### definePlugin.over<Db, Services = unknown>(): <Schema extends z.ZodType>(name: string, definition: Definition<Schema, Services, Db>) => Plugin
+
 ### defineRoute<PluginContext = Context>(): <Input extends z.ZodType>(route: Route<PluginContext, Input>) => Route<PluginContext, Input>
 
 ### discover(modules: PluginModules): Plugin[]
@@ -46,7 +48,7 @@
 
 ### sockets(kernel: { channels: () => readonly RegisteredChannel[]; }, claim?: string): { push: (message: ChannelMessage) => void; subscribe: (identity: Identity | undefined, send: (text: string) => void) => Subscription; }
 
-### start(options: StartOptions): Promise<RunningApp>
+### start(options: StartOptions): Promise<StartedApp>
 
 ### unlimited(): { spend: () => RateLimitResult; refund: () => void; sweep: () => number; size: () => number; }
 
@@ -207,7 +209,7 @@
     at: number
 
 ### FaultCode
-    "DUPLICATE_PLUGIN" | "UNKNOWN_DEPENDENCY" | "DEPENDENCY_CYCLE" | "INVALID_NAME" | "INVALID_CONFIG" | "INVALID_ROUTE" | "INVALID_PAYLOAD" | "WRONG_PAYLOAD" | "INVALID_OUTPUT" | "UNDECLARED_CHANNEL" | "UNDECLARED_EVENT" | "UNHEARD_EVENT" | "UNDECLARED_HOOK" | "UNDECLARED_COMMAND" | "UNDECLARED_SCOPE" | "UNSCOPED_CALLER" | "UNCLAIMED_SCOPE" | "OUT_OF_SCOPE" | "UNDECLARED_PERMISSION" | "UNDECLARED_DEPENDENCY" | "UNDECLARED_HOST" | "DUPLICATE_ROUTE" | "DUPLICATE_CHANNEL" | "DUPLICATE_EVENT" | "DUPLICATE_HOOK" | "DUPLICATE_COMMAND" | "DUPLICATE_PERMISSION" | "DUPLICATE_GRANTS" | "UNGRANTABLE_PERMISSION" | "DUPLICATE_TABLE" | "UNAUTHENTICATED" | "PERMISSION_DENIED" | "RATE_LIMITED" | "NOT_STARTED"
+    "DUPLICATE_PLUGIN" | "UNKNOWN_DEPENDENCY" | "DEPENDENCY_CYCLE" | "INVALID_NAME" | "INVALID_CONFIG" | "INVALID_ROUTE" | "INVALID_PAYLOAD" | "WRONG_PAYLOAD" | "INVALID_OUTPUT" | "UNDECLARED_CHANNEL" | "UNDECLARED_EVENT" | "SELF_HEARD_EVENT" | "UNDECLARED_HOOK" | "UNDECLARED_COMMAND" | "UNDECLARED_SCOPE" | "UNSCOPED_CALLER" | "UNCLAIMED_SCOPE" | "OUT_OF_SCOPE" | "UNDECLARED_PERMISSION" | "UNDECLARED_DEPENDENCY" | "UNDECLARED_HOST" | "DUPLICATE_ROUTE" | "DUPLICATE_CHANNEL" | "DUPLICATE_EVENT" | "DUPLICATE_HOOK" | "DUPLICATE_COMMAND" | "DUPLICATE_PERMISSION" | "DUPLICATE_GRANTS" | "UNGRANTABLE_PERMISSION" | "DUPLICATE_TABLE" | "UNAUTHENTICATED" | "PERMISSION_DENIED" | "RATE_LIMITED" | "NOT_STARTED"
 
 ### HonoApp
     ReturnType<typeof serve>
@@ -363,13 +365,13 @@
     attempts: number
 
 ### RateLimiter
-    spend: (key: string, window: { requests: number; seconds: number; }) => { allowed: boolean; resetsIn: number; }
+    spend: (key: string, window: { requests: number; seconds: number; }) => { allowed: boolean; resetsInSeconds: number; }
     refund?: (key: string) => void
 
 ### RateLimitResult
     allowed: boolean
     remaining: number
-    resetsIn: number
+    resetsInSeconds: number
 
 ### RateLimitWindow
     requests: number
@@ -413,7 +415,7 @@
     keepsRaw?: boolean
     handle: (input: z.infer<Input>, ctx: Context) => unknown | Promise<unknown>
 
-### RunningApp
+### StartedApp
     kernel: Kernel
     store: Store
     app: ReturnType<typeof serve>
@@ -490,8 +492,8 @@
 
 ### Subscription
     isListening: (channel: string) => boolean
-    listenTo: (channel: string) => boolean
-    stopListening: (channel: string) => void
+    listen: (channel: string) => boolean
+    unlisten: (channel: string) => void
     close: () => void
 
 ### TablesByName

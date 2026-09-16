@@ -9,14 +9,14 @@ import { Log } from "./kernel/logger";
 import { Plugins } from "./kernel/plugins";
 import { Settings } from "./kernel/settings";
 
-import type { ListenerFailure, Logger, RunningApp } from "@onetype/stack-api-kit";
+import type { ListenerFailure, Logger, StartedApp, Subscription } from "@onetype/stack-api-kit";
 
 type Server = ReturnType<typeof serve>;
 
 class Api
 {
-    patience = 10_000;
-    draining = 250;
+    stopTimeoutMs = 10_000;
+    drainMs = 250;
 
     from(behindProxy: boolean)
     {
@@ -70,11 +70,11 @@ class Api
         this.closeOnSignal(server, api, log);
     }
 
-    listen(api: RunningApp, port: number): Server
+    listen(api: StartedApp, port: number): Server
     {
-        const joining = api.sockets;
+        const sockets = api.sockets;
 
-        if (joining === undefined)
+        if (sockets === undefined)
         {
             return serve({ fetch: api.fetch, port });
         }
@@ -83,12 +83,12 @@ class Api
 
         app.get("/ws", upgradeWebSocket(() =>
         {
-            let subscription: ReturnType<typeof joining.subscribe> | undefined;
+            let subscription: ReturnType<typeof sockets.subscribe> | undefined;
 
             return {
                 onOpen: (_event, socket) =>
                 {
-                    subscription = joining.subscribe(undefined, (text: string) =>
+                    subscription = sockets.subscribe(undefined, (text: string) =>
                     {
                         socket.send(text);
                     });
@@ -96,9 +96,9 @@ class Api
 
                 onMessage: (event, socket) =>
                 {
-                    const said = (event as { data?: unknown }).data;
+                    const payload = (event as { data?: unknown }).data;
 
-                    void this.handleSocketMessage(api, subscription, String(said), (text: string) =>
+                    void this.handleSocketMessage(api, subscription, String(payload), (text: string) =>
                     {
                         socket.send(text);
                     });
@@ -116,7 +116,7 @@ class Api
         return serve({ fetch: app.fetch, port, websocket: { server: new WebSocketServer({ noServer: true }) as unknown as WebSocketServerLike } });
     }
 
-    async handleSocketMessage(api: RunningApp, subscription: { listenTo: (channel: string) => boolean; stopListening: (channel: string) => void } | undefined, text: string, send: (text: string) => void): Promise<void>
+    async handleSocketMessage(api: StartedApp, subscription: Subscription | undefined, text: string, send: (text: string) => void): Promise<void>
     {
         const request = JSON.parse(text) as {
             id?: string; method?: string; path?: string;
@@ -127,14 +127,14 @@ class Api
 
         if (request.subscribe !== undefined)
         {
-            subscription?.listenTo(request.subscribe);
+            subscription?.listen(request.subscribe);
 
             return;
         }
 
         if (request.unsubscribe !== undefined)
         {
-            subscription?.stopListening(request.unsubscribe);
+            subscription?.unlisten(request.unsubscribe);
 
             return;
         }
@@ -150,27 +150,27 @@ class Api
         send(JSON.stringify({ id: request.id, status: answer.status, body: answer.body }));
     }
 
-    freshFailures(failures: readonly ListenerFailure[], read: number): { fresh: readonly ListenerFailure[]; read: number }
+    freshFailures(failures: readonly ListenerFailure[], readCount: number): { fresh: readonly ListenerFailure[]; read: number }
     {
-        return { fresh: failures.slice(read), read: failures.length };
+        return { fresh: failures.slice(readCount), read: failures.length };
     }
 
-    watch(api: RunningApp, log: Logger, every: number): NodeJS.Timeout
+    watch(api: StartedApp, log: Logger, everyMs: number): NodeJS.Timeout
     {
-        let read = 0;
+        let readCount = 0;
 
         const timer = setInterval(() =>
         {
             const failures = api.kernel.events.failures();
 
-            if (failures.length < read)
+            if (failures.length < readCount)
             {
-                read = 0;
+                readCount = 0;
             }
 
-            const { fresh, read: now } = this.freshFailures(failures, read);
+            const { fresh, read: seen } = this.freshFailures(failures, readCount);
 
-            read = now;
+            readCount = seen;
 
             if (fresh.length > 0)
             {
@@ -180,14 +180,14 @@ class Api
                     why: [...new Set(fresh.map((failure) => (failure.error instanceof Error ? failure.error.message : String(failure.error))))].slice(0, 5),
                 });
             }
-        }, every);
+        }, everyMs);
 
         timer.unref();
 
         return timer;
     }
 
-    closeOnSignal(server: Server, api: RunningApp, log: Logger): void
+    closeOnSignal(server: Server, api: StartedApp, log: Logger): void
     {
         let closing = false;
 
@@ -208,14 +208,14 @@ class Api
             {
                 log.error("stop took too long", { signal });
                 process.exit(1);
-            }, this.patience);
+            }, this.stopTimeoutMs);
 
             forced.unref();
 
             api.stop().then(
                 async () =>
                 {
-                    await new Promise((settle) => setTimeout(settle, this.draining));
+                    await new Promise((settle) => setTimeout(settle, this.drainMs));
 
                     process.exit(0);
                 },

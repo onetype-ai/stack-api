@@ -5,11 +5,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@onetype/stack-api-kit";
 
 export const Plugins = {
-    at: join(dirname(fileURLToPath(import.meta.url)), "..", "plugins"),
+    folder: join(dirname(fileURLToPath(import.meta.url)), "..", "plugins"),
 
     discover: async (): Promise<Plugin[]> =>
     {
-        const folders = await readdir(Plugins.at, { withFileTypes: true });
+        const folders = await readdir(Plugins.folder, { withFileTypes: true });
         const plugins: Plugin[] = [];
 
         for (const folder of folders)
@@ -25,8 +25,8 @@ export const Plugins = {
 
     read: async (name: string): Promise<Plugin> =>
     {
-        const at = join(Plugins.at, name, "plugin.ts");
-        const module = (await import(pathToFileURL(at).href)) as { default?: Plugin };
+        const file = join(Plugins.folder, name, "plugin.ts");
+        const module = (await import(pathToFileURL(file).href)) as { default?: Plugin };
 
         if (module.default === undefined)
         {

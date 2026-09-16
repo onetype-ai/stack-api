@@ -105,9 +105,9 @@ what happened without knowing who hears.
 ```ts
 import { Notes } from "@plugins/notes";
 
-const page = await Notes.list(ctx);
-const note = await Notes.get(ctx, id);
-const many = await Notes.many(ctx);
+const page = await Notes.get.page(ctx);
+const note = await Notes.get.one(ctx, id);
+const many = await Notes.get.count(ctx);
 ```
 
 Routes: `GET /notes`, `GET /notes/search`, `GET /notes/:id`, `POST /notes`,
@@ -138,39 +138,39 @@ import type { NotePage } from "./schemas/NotePage";
 import type { NoteQuery } from "./types/NoteQuery";
 import type { Services } from "./types/Services";
 
-const notesOf = (ctx: Context) => ctx.use<Services>("notes").notes;
+const notesIn = (ctx: Context) => ctx.use<Services>("notes").notes;
 
 export const Notes = {
     get: {
         one: (ctx: Context, id: string): Promise<Note> =>
         {
-            return notesOf(ctx).get(id);
+            return notesIn(ctx).get(id);
         },
 
         page: (ctx: Context, query: NoteQuery = {}): Promise<NotePage> =>
         {
-            return notesOf(ctx).list(query);
+            return notesIn(ctx).list(query);
         },
 
         search: (ctx: Context, text: string): Promise<Note[]> =>
         {
-            return notesOf(ctx).search(text);
+            return notesIn(ctx).search(text);
         },
 
         count: (ctx: Context): Promise<number> =>
         {
-            return notesOf(ctx).many();
+            return notesIn(ctx).count();
         },
     },
 
     write: (ctx: Context, title: string, body: string): Promise<Note> =>
     {
-        return notesOf(ctx).write(title, body);
+        return notesIn(ctx).write(title, body);
     },
 
     remove: (ctx: Context, id: string): Promise<void> =>
     {
-        return notesOf(ctx).remove(id);
+        return notesIn(ctx).remove(id);
     },
 };
 
@@ -205,12 +205,12 @@ import { z } from "zod";
 import { Note } from "../schemas/Note";
 import { NotePage } from "../schemas/NotePage";
 
-import type { Endpoint } from "@onetype/stack-api-kit";
+import type { AnyRoute } from "@onetype/stack-api-kit";
 import type { NotesContext } from "../types/Context";
 
 const route = defineRoute<NotesContext>();
 
-export const noteRoutes: readonly Endpoint<NotesContext>[] = [
+export const noteRoutes: readonly AnyRoute<NotesContext>[] = [
     route({
         method: "GET",
         path: "/notes",
@@ -454,11 +454,11 @@ export class Notes
         return this.#ctx.tx(async (inside) =>
         {
             const [tally] = await inside.db
-                .select({ many: count() })
+                .select({ rows: count() })
                 .from(notes)
                 .where(this.#whereOwner());
 
-            if ((tally?.many ?? 0) >= this.#ctx.config.mostPerOwner)
+            if ((tally?.rows ?? 0) >= this.#ctx.config.mostPerOwner)
             {
                 throw new Refusal(409, "TOO_MANY", "That is as many notes as one reader may keep.", {
                     most: String(this.#ctx.config.mostPerOwner),
@@ -517,11 +517,11 @@ export class Notes
         });
     }
 
-    async many(): Promise<number>
+    async count(): Promise<number>
     {
-        const [tally] = await this.#ctx.db.select({ many: count() }).from(notes).where(this.#whereOwner());
+        const [tally] = await this.#ctx.db.select({ rows: count() }).from(notes).where(this.#whereOwner());
 
-        return tally?.many ?? 0;
+        return tally?.rows ?? 0;
     }
 
     #whereOwner(): SQL | undefined
@@ -1517,7 +1517,7 @@ export default definePlugin.over<LabelsDb, Services>()("labels", {
                 describe: "Takes the labels off a note that no longer exists.",
                 handle: async (event, ctx) =>
                 {
-                    const howMany = await ctx.forScope(event.ownerId).services.labels.dropFor(event.id);
+                    const howMany = await ctx.forScope(event.ownerId).services.labels.clear(event.id);
 
                     if (howMany > 0)
                     {
@@ -1550,7 +1550,7 @@ export default definePlugin.over<LabelsDb, Services>()("labels", {
             schema: z.object({ noteId: z.uuid(), ownerId: z.string().min(1) }),
             run: async (input, ctx) =>
             {
-                const howMany = await ctx.forScope(input.ownerId).services.labels.dropFor(input.noteId);
+                const howMany = await ctx.forScope(input.ownerId).services.labels.clear(input.noteId);
 
                 ctx.log.info("note forgotten", { note: input.noteId, howMany });
             },
@@ -1587,7 +1587,7 @@ for nobody.
 ```ts
 import { Labels } from "@plugins/labels";
 
-const words = await Labels.forNote(ctx, noteId);
+const words = await Labels.ofNote.all(ctx, noteId);
 ```
 
 Routes: `GET /notes/:noteId/labels`, `POST /notes/:noteId/labels`.
@@ -1613,23 +1613,23 @@ import type { Context } from "@onetype/stack-api-kit";
 import type { Label } from "./schemas/Label";
 import type { Services } from "./types/Services";
 
-const labelsOf = (ctx: Context) => ctx.use<Services>("labels").labels;
+const labelsIn = (ctx: Context) => ctx.use<Services>("labels").labels;
 
 export const Labels = {
     ofNote: {
         all: (ctx: Context, noteId: string): Promise<Label[]> =>
         {
-            return labelsOf(ctx).forNote(noteId);
+            return labelsIn(ctx).forNote(noteId);
         },
 
         add: (ctx: Context, noteId: string, word: string): Promise<Label> =>
         {
-            return labelsOf(ctx).add(noteId, word);
+            return labelsIn(ctx).add(noteId, word);
         },
 
         clear: (ctx: Context, noteId: string): Promise<number> =>
         {
-            return labelsOf(ctx).dropFor(noteId);
+            return labelsIn(ctx).clear(noteId);
         },
     },
 };
@@ -1656,12 +1656,12 @@ import { z } from "zod";
 
 import { Label } from "../schemas/Label";
 
-import type { Endpoint } from "@onetype/stack-api-kit";
+import type { AnyRoute } from "@onetype/stack-api-kit";
 import type { LabelsContext } from "../types/Context";
 
 const route = defineRoute<LabelsContext>();
 
-export const labelRoutes: readonly Endpoint<LabelsContext>[] = [
+export const labelRoutes: readonly AnyRoute<LabelsContext>[] = [
     route({
         method: "GET",
         path: "/notes/:noteId/labels",
@@ -1781,11 +1781,11 @@ export class Labels
         return this.#ctx.tx(async (inside) =>
         {
             const [tally] = await inside.db
-                .select({ many: count() })
+                .select({ rows: count() })
                 .from(labels)
                 .where(this.#whereNote(noteId));
 
-            if ((tally?.many ?? 0) >= this.#ctx.config.mostPerNote)
+            if ((tally?.rows ?? 0) >= this.#ctx.config.mostPerNote)
             {
                 throw new Refusal(409, "TOO_MANY", "That note carries as many labels as one may.", {
                     most: String(this.#ctx.config.mostPerNote),
@@ -1815,7 +1815,7 @@ export class Labels
         });
     }
 
-    async dropFor(noteId: string): Promise<number>
+    async clear(noteId: string): Promise<number>
     {
         const rows = await this.#ctx.write(() =>
         {
@@ -1937,7 +1937,7 @@ describe("hearing that a note is gone", () =>
             identity: whoever(["notes.write"]),
         });
 
-        await api.settle();
+        await api.flush();
 
         const left = await api.kernel.handle({
             method: "GET",
@@ -1962,7 +1962,7 @@ describe("hearing that a note is gone", () =>
             identity: whoever(["notes.write"]),
         });
 
-        await api.settle();
+        await api.flush();
 
         expect(api.kernel.events.failures()).toEqual([]);
     });
@@ -2186,8 +2186,9 @@ const reader = await Readers.get.byKey(ctx, key);
   plugin declares it, and `main.ts` wires none.
 - `grants` answers what a role may do. `identifies` never names a permission,
   so no plugin grants itself one.
-- `mayGrant` is every permission any role carries. A route requiring one
-  outside it refuses the boot, naming both.
+- `mayGrant` is not declared here, so every declared permission passes. A
+  plugin that names one is held to exactly that list: a route requiring a
+  permission outside it refuses the boot, naming both.
 - A key is kept as its SHA-256 fingerprint, never as itself.
 
 ## Refuses
@@ -2204,18 +2205,18 @@ import type { Reader } from "./services/directory";
 import type { Role } from "./schemas/Role";
 import type { Services } from "./types/Services";
 
-const directoryOf = (ctx: Context) => ctx.use<Services>("readers").directory;
+const directoryIn = (ctx: Context) => ctx.use<Services>("readers").directory;
 
 export const Readers = {
     get: {
         byKey: (ctx: Context, key: string | undefined): Promise<Reader | undefined> =>
         {
-            return directoryOf(ctx).of(key);
+            return directoryIn(ctx).of(key);
         },
 
         grantsFor: (ctx: Context, role: Role): readonly string[] =>
         {
-            return directoryOf(ctx).grants(role);
+            return directoryIn(ctx).grants(role);
         },
     },
 };

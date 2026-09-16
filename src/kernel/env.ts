@@ -28,7 +28,7 @@ export const Env = {
         return value;
     },
 
-    number: (name: string, fallback: number, least = 0, most = Number.MAX_SAFE_INTEGER): number =>
+    number: (name: string, fallback: number, min = 0, max = Number.MAX_SAFE_INTEGER): number =>
     {
         const value = Env.text(name);
 
@@ -39,9 +39,9 @@ export const Env = {
 
         const asNumber = value.trim() === "" ? Number.NaN : Number(value);
 
-        if (!Number.isInteger(asNumber) || asNumber < least || asNumber > most)
+        if (!Number.isInteger(asNumber) || asNumber < min || asNumber > max)
         {
-            throw new Error(`${name} must be a whole number from ${String(least)} to ${String(most)}. Received "${value}".`);
+            throw new Error(`${name} must be a whole number from ${String(min)} to ${String(max)}. Received "${value}".`);
         }
 
         return asNumber;
