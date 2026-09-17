@@ -14,7 +14,7 @@
     },
     "dependencies": {
         "@hono/node-server": "2.1.1",
-        "@onetype/stack-api-kit": "^8.0.0",
+        "@onetype/stack-api-kit": "^8.0.1",
         "better-sqlite3": "13.0.3",
         "drizzle-orm": "0.45.2",
         "hono": "4.13.5",
