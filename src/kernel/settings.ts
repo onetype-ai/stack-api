@@ -1,6 +1,5 @@
-import { Env } from "./env";
-
-export type Level = "debug" | "info" | "warn" | "error";
+import { Env, LEVELS } from "@onetype/stack-api-kit";
+import type { Level } from "@onetype/stack-api-kit";
 
 export type Settings = {
     port: number;
@@ -18,7 +17,7 @@ export type Settings = {
 };
 
 export const Settings = {
-    levels: ["debug", "info", "warn", "error"] as const satisfies readonly Level[],
+    levels: LEVELS,
 
     read: (): Settings =>
     {

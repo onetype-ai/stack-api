@@ -33,28 +33,13 @@ every route that is not `public` answers 401: the API working, not a bug.
 
 ## Where to read
 
-`docs.md` is everything: how to add and use a plugin, the structure and why,
-a procedure for each part. One file, so it reads without walking a tree.
+`#docs/` is everything: how to add and use a plugin, the structure and why,
+a procedure for each part. `docs.md` beside it is the same documents folded
+into one file, for reading without walking a tree.
 
-`src/plugins/example.txt` is the three worked examples:
+No worked example ships. `src/plugins/` and `src/utils/` are empty, so the
+procedures in `#docs/` are the only description of a plugin's shape: read
+those rather than looking for code that is not here.
 
-- `notes` shows what one plugin does alone: scoped rows, a cursor the database
-  walks, text that matches and sorts in any language, a quota, a hook.
-- `labels` shows every way across a boundary: a public API call, an event
-  heard, a hook joined, a command run for nobody, a channel pushed to whoever
-  is watching.
-- `readers` says who is calling and what that means, so `main.ts` need not
-  know which plugin holds a session.
-
-The domains are dull on purpose: take the mechanics, never the model.
-
-`src/utils/example.txt` is the two shared utilities, the same way. Each is a
-folder folded into one file: every path and line, in reading order.
-
-```sh
-node tools/pack/examples.mjs unpack   # and pack, to fold them away again
-```
-
-Read them folded, or unpack to open them as files. Nothing needs unpacking:
-the stack starts with no examples at all, answering no routes but its own
+The stack starts with no plugins at all, answering no routes but its own
 health.

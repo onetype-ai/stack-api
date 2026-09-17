@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 
-import { startTestKernel } from "@onetype/stack-api-kit/testing";
+import { startTestKernel, Started } from "@onetype/stack-api-kit/testing";
 
 import { Plugins } from "../plugins";
 
@@ -14,66 +14,10 @@ afterEach(async () =>
     api = undefined;
 });
 
-describe("every plugin this project ships, brought up together", () =>
+test("every plugin this project ships starts together, and holds to every rule a running kernel is checked by", async () =>
 {
-    test("starts, which no single plugin's own tests prove", async () =>
-    {
-        api = await startTestKernel({ plugins: await Plugins.discover() });
+    api = await startTestKernel({ plugins: await Plugins.discover() });
 
-        expect(api.kernel.started()).toBe(true);
-    });
-
-    test("and every permission a route needs is one some plugin declares", async () =>
-    {
-        const plugins = await Plugins.discover();
-
-        api = await startTestKernel({ plugins });
-
-        const declared = new Set(plugins.flatMap((plugin) => Object.keys(plugin.definition.permissions ?? {})));
-
-        const unreachable = api.kernel.routes()
-            .flatMap((route) => route.requires)
-            .filter((permission) => !declared.has(permission));
-
-        expect(unreachable).toEqual([]);
-    });
-
-    test("with a budget on every closed route, so none is unbounded", async () =>
-    {
-        api = await startTestKernel({ plugins: await Plugins.discover() });
-
-        const unbounded = api.kernel.routes()
-            .filter((route) => !route.public && route.limit === undefined)
-            .map((route) => `${route.method} ${route.path}`);
-
-        expect(unbounded).toEqual([]);
-    });
-
-    test("and no route reading a header that carries a credential", async () =>
-    {
-        api = await startTestKernel({ plugins: await Plugins.discover() });
-
-        const credentialled = api.kernel.routes()
-            .filter((route) => route.reads.some((name) => /cookie|authorization/i.test(name)))
-            .map((route) => `${route.method} ${route.path}`);
-
-        expect(credentialled).toEqual([]);
-    });
-});
-
-describe("an application carrying no plugin at all", () =>
-{
-    test("starts, because the examples are examples and the stack is not them", async () =>
-    {
-        api = await startTestKernel({ plugins: [] });
-
-        expect(api.kernel.started()).toBe(true);
-    });
-
-    test("and declares no route of its own, so the first one written is the first one there is", async () =>
-    {
-        api = await startTestKernel({ plugins: [] });
-
-        expect(api.kernel.routes()).toEqual([]);
-    });
+    expect(api.kernel.started()).toBe(true);
+    expect(Started.findAll(api.kernel).map((problem) => `[${problem.check}] ${problem.message}`)).toEqual([]);
 });
