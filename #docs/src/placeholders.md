@@ -14,8 +14,10 @@ Substitute every one; none is a name to keep.
 | `<scope>` | what a row belongs to, where the plugin scopes |
 | `<value>` | a local holding one parsed or fetched item |
 | `<row>` | a local holding one database row |
-| `<event>`, `<action>` | the past-tense and imperative halves of a name |
+| `<event>` | a state change announced |
+| `<action>` | the operation a hook or command names |
 | `<claim>`, `<identity>`, `<host>` | a claim key, a caller id, a hostname |
 | `<describe>` | one sentence, for whoever reads the failure |
 
-Real type names appear as themselves.
+Real type names appear as themselves. A method is a verb in the imperative:
+`get`, `list`, `create`, `update`, `remove`, `find`, `send`, `handle`.

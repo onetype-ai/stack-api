@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -9,6 +10,11 @@ export const Plugins = {
 
     discover: async (): Promise<Plugin[]> =>
     {
+        if (!existsSync(Plugins.folder))
+        {
+            return [];
+        }
+
         const folders = await readdir(Plugins.folder, { withFileTypes: true });
         const plugins: Plugin[] = [];
 

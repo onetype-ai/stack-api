@@ -21,3 +21,11 @@ test("every plugin this project ships starts together, and holds to every rule a
     expect(api.kernel.started()).toBe(true);
     expect(Started.findAll(api.kernel).map((problem) => `[${problem.check}] ${problem.message}`)).toEqual([]);
 });
+
+test("a checkout with no src/plugins starts, because git keeps no empty folder and a fresh clone has none", async () =>
+{
+    api = await startTestKernel({ plugins: [] });
+
+    expect(api.kernel.started()).toBe(true);
+    expect(api.kernel.routes()).toEqual([]);
+});

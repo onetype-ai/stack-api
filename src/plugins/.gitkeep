@@ -1,0 +1,2 @@
+Git keeps no empty folder, and this one has to survive a clone: the checks
+read it, and a plugin goes here. Delete this file once one does.
