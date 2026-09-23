@@ -15,8 +15,8 @@ Nothing central lists the plugins: adding one touches no file above it.
 `*` is required by the kernel.
 
 ```
-plugins/<plugin>/
-├── plugin.ts *     one default export
+plugins/items/
+├── plugin.ts *     one default export: the contract
 ├── usage.md *      under 1800 characters
 ├── index.ts        the public API, the only file another plugin may import
 ├── schemas/        PascalCase.ts, one zod schema a file
@@ -29,4 +29,8 @@ plugins/<plugin>/
 └── tests/          camelCase.test.ts, flat
 ```
 
-Placeholders every example uses: `placeholders.md`.
+## The examples
+
+Every procedure in `plugin/` shows one plugin, `items`: a tenant's `Item`s,
+each with a `title`. A second, `activity`, listens to it. The words are
+neutral on purpose: replace each with your own, keep none.

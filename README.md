@@ -46,11 +46,12 @@ every route that is not `public` answers 401 — the API working, not a bug.
 
 | | |
 |---|---|
+| `#docs/usage.md` | what this project is: rewrite it first |
+| `#docs/architecture.md` | what is built, and what is decided but not yet |
 | `#docs/stack.md` | what the kit is for, and what `verify` catches |
 | `#docs/src/structure.md` | where a file goes |
-| `#docs/src/placeholders.md` | what every `<name>` in an example stands for |
-| `#docs/src/plugin/` | one procedure a file: what to write, and a skeleton |
+| `#docs/src/plugin/` | one procedure a file, each with an example |
 | `schemas.md` | the kit's whole surface, generated from its published types |
 
-No worked example ships: `src/plugins/` and `src/utils/` are empty. The
-procedures are the description of a plugin's shape.
+`src/plugins/` and `src/utils/` are empty. The procedures show one neutral
+plugin, `items`, in pieces: copy the shape, never the words.

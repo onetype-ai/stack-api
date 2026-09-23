@@ -22,8 +22,8 @@ Two plugins reach each other only through `index.ts`, and only where
 thing it answers is a scoped read that narrows by nothing:
 
 ```
-[unscoped] <plugin>/services/<plugin>.ts: queries "<table>", which "<plugin>"
-scopes, and narrows by nothing. Every tenant's rows answer.
+[unscoped] items/services/items.ts: queries "items", which "items" scopes,
+and narrows by nothing. Every tenant's rows answer.
 ```
 
 That compiles, boots, serves, and returns every tenant's rows. It also names a
