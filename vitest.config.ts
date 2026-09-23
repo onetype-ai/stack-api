@@ -14,6 +14,7 @@ export default defineConfig({
         environment: "node",
         globals: true,
         include: ["src/**/tests/**/*.test.ts"],
+        setupFiles: ["src/kernel/tests/kernels.ts"],
         passWithNoTests: false,
 
         // Project.checks() reads the tree from disk, so nothing it looks at is

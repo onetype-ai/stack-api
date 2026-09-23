@@ -39,6 +39,9 @@ is never printed. `pnpm dev` and `pnpm start` read `.env`; copy `.env.example`.
 Everything defaults but `ORIGINS`, which starts empty: no browser origin is
 allowed until one is named.
 
+Every process may ask for work later; only one started with `SCHEDULE=true`
+runs it. `GET /live`, `/health` and `/ready` answer for an orchestrator.
+
 Nothing identifies a caller until a plugin declares `identifies`. Until then
 every route that is not `public` answers 401 — the API working, not a bug.
 

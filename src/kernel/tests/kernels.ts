@@ -1,0 +1,20 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseEnv } from "node:util";
+
+import { configureTestKernels } from "@onetype/stack-api-kit/testing";
+
+import { Plugins } from "../plugins";
+import { Settings } from "../settings";
+
+// A test names only the plugin it tests: whatever that one depends on comes from src/plugins, configured by
+// boot.env as the runtime reads .env. Discovery runs only when a kernel names a dependency it was not given.
+configureTestKernels({
+    resolve: async () =>
+    {
+        const plugins = await Plugins.discover();
+        const environment = parseEnv(readFileSync(join(import.meta.dirname, "boot.env"), "utf8"));
+
+        return { plugins, config: Settings.configFor(plugins, environment) };
+    },
+});
