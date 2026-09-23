@@ -16,6 +16,7 @@ export async function open(): Promise<void>
         config: Settings.configFor(plugins),
         database: { file: settings.database },
         outbox: settings.outbox,
+        strictReplyHeaders: true,
         // Every process may ask for work later; only one started with SCHEDULE=true runs it.
         schedule: settings.schedule ? true : "enqueue",
         sockets: settings.sockets,

@@ -9,7 +9,9 @@ import { Settings } from "../settings";
 
 // A test names only the plugin it tests: whatever that one depends on comes from src/plugins, configured by
 // boot.env as the runtime reads .env. Discovery runs only when a kernel names a dependency it was not given.
+// Every kernel keeps an outbox and holds replies to the header allow-list, as src/main.ts starts the api.
 configureTestKernels({
+    defaults: { outbox: true, strictReplyHeaders: true },
     resolve: async () =>
     {
         const plugins = await Plugins.discover();

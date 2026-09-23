@@ -34,7 +34,7 @@ export const Settings = {
         return {
             port: Env.number("PORT", 7280, 1, 65_535),
             database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
-            outbox: Env.flag("OUTBOX", false),
+            outbox: Env.flag("OUTBOX", true),
             schedule: Env.flag("SCHEDULE", false),
             sockets: Env.flag("SOCKETS", true),
             origins: Env.list("ORIGINS"),
