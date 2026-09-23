@@ -8,7 +8,8 @@ import { Settings } from "./kernel/settings";
 export async function open(): Promise<void>
 {
     const settings = Settings.read();
-    const log = Log.forLevel(settings.logLevel);
+    // Personal data (emails, addresses) is masked in every line, as credentials always are.
+    const log = Log.forLevel(settings.logLevel, { personal: true });
     const plugins = await Plugins.discover();
 
     const api = await start({

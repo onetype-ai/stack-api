@@ -9,7 +9,7 @@
         "test:watch": "vitest",
         "typecheck": "tsc --noEmit",
         "lint": "eslint src",
-        "verify": "pnpm lint && pnpm typecheck && pnpm test",
+        "verify": "pnpm lint && pnpm typecheck && pnpm schemas --check && pnpm test",
         "schemas": "node tools/schemas.mjs",
         "stored:accept": "tsx tools/stored-contracts.mjs"
     },

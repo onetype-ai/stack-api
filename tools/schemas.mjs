@@ -529,6 +529,23 @@ for (const entry of entryPoints())
     written.push(``);
 }
 
-writeFileSync(OUT, `${written.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`);
+const surface = `${written.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
+const count = written.filter((line) => line.startsWith("### ")).length;
 
-console.log(`${OUT}: ${written.filter((line) => line.startsWith("### ")).length} declarations`);
+// `--check` writes nothing and fails when the file is not what the installed kit exports,
+// so verify refuses a schemas.md left behind by a kit upgrade.
+if (process.argv.includes("--check"))
+{
+    if (!existsSync(OUT) || readFileSync(OUT, "utf8") !== surface)
+    {
+        console.error(`${OUT} is not what the installed kit exports. Run pnpm schemas and commit it.`);
+        process.exit(1);
+    }
+
+    console.log(`${OUT}: current, ${count} declarations`);
+}
+else
+{
+    writeFileSync(OUT, surface);
+    console.log(`${OUT}: ${count} declarations`);
+}

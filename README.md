@@ -53,6 +53,8 @@ every route that is not `public` answers 401 — the API working, not a bug.
 | `#docs/architecture.md` | what is built, and what is decided but not yet |
 | `#docs/stack.md` | what the kit is for, and what `verify` catches |
 | `#docs/src/structure.md` | where a file goes |
+| `#docs/src/operations.md` | proxies, request ids, logs, headers, stored rows, language |
+| `#docs/src/testing.md` | what to test, how much, and when |
 | `#docs/src/plugin/` | one procedure a file, each with an example |
 | `schemas.md` | the kit's whole surface, generated from its published types |
 
