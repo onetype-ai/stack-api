@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { findMissingDocs, Project } from "@onetype/stack-api-kit/testing";
+import { Project } from "@onetype/stack-api-kit/testing";
 
 import type { ProjectProblem } from "@onetype/stack-api-kit/testing";
 
@@ -14,23 +14,14 @@ const isGenerated = (problem: ProjectProblem): boolean =>
 // Plugins allowed to leave the process's single thread (a worker, a child process), each named on purpose.
 const LEAVING: readonly string[] = [];
 
-// What a new project writes first, as the app starter requires the same three. Until the kit's findAll
-// honours its `required` option, the documents are checked here.
-const REQUIRED = ["#docs/usage.md", "#docs/stack.md", "#docs/architecture.md"];
-
 // Reading every source file takes seconds on a busy machine, past vitest's default 5 s.
 const READ_MS = 60_000;
 
 test("the project holds to every rule the kit checks, including ones added after this was written (given a minute: it reads the whole tree)", () =>
 {
-    const problems = Project.findAll({ leaving: LEAVING })
+    const problems = Project.findAll({ leaving: LEAVING, required: [...Project.required, "#docs/stack.md"] })
         .filter((problem) => !isGenerated(problem))
         .map((problem) => `[${problem.check}] ${problem.message}`);
 
     expect(problems).toEqual([]);
 }, READ_MS);
-
-test("the documents every project keeps are there and hold something", () =>
-{
-    expect(findMissingDocs(process.cwd(), REQUIRED)).toEqual([]);
-});

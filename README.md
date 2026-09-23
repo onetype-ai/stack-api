@@ -27,7 +27,7 @@ Two people sharing one database need not: a restart empties it under both.
 ## Configuration
 
 `PORT`, `DATABASE_FILE`, `ORIGINS`, `BODY_BYTES`, `LOG_LEVEL`, `OUTBOX`,
-`SCHEDULE`, `SOCKETS`, `BEHIND_PROXY`, `WATCH_SECONDS`. Each is validated at
+`SCHEDULE`, `SOCKETS`, `TRUSTED_PROXIES`, `WATCH_SECONDS`. Each is validated at
 startup and refused by name, so a typo stops the boot rather than taking a
 default.
 

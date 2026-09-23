@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 
 import { definePlugin } from "@onetype/stack-api-kit";
@@ -65,5 +65,27 @@ describe("plugin config read from the environment", () =>
         expect(message).toContain("MAILER__API_KEY");
         expect(message).toContain("WEB_CRAWLER__BASE_URL");
         expect(message).not.toContain(SECRET);
+    });
+});
+
+describe("the proxies believed about who called", () =>
+{
+    afterEach(() =>
+    {
+        vi.unstubAllEnvs();
+    });
+
+    test("refuses BEHIND_PROXY, which believed any caller, and names TRUSTED_PROXIES instead", () =>
+    {
+        vi.stubEnv("BEHIND_PROXY", "true");
+
+        expect(() => Settings.read()).toThrow("TRUSTED_PROXIES");
+    });
+
+    test("reads TRUSTED_PROXIES as the list of proxies in front", () =>
+    {
+        vi.stubEnv("TRUSTED_PROXIES", "10.0.0.5,10.1.0.0/16");
+
+        expect(Settings.read().trustedProxies).toEqual(["10.0.0.5", "10.1.0.0/16"]);
     });
 });

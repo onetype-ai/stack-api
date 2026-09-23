@@ -23,7 +23,8 @@ export async function open(): Promise<void>
         http: {
             origins: settings.origins,
             bodyBytes: settings.bodyBytes,
-            from: Server.from(settings.behindProxy),
+            // Only the proxies named are believed about who called; with none, the socket's own address counts.
+            from: Server.from(settings.trustedProxies.length > 0 ? { trustedProxies: settings.trustedProxies } : false),
         },
         log,
     });
@@ -42,7 +43,7 @@ export async function open(): Promise<void>
     Server.open(api, {
         port: settings.port,
         log,
-        behindProxy: settings.behindProxy,
+        trustedProxies: settings.trustedProxies,
         watchSeconds: settings.watchSeconds,
     });
 }

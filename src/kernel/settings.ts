@@ -12,7 +12,7 @@ export type Settings = {
     origins: readonly string[];
     bodyBytes: number;
 
-    behindProxy: boolean;
+    trustedProxies: readonly string[];
 
     watchSeconds: number;
     logLevel: Level;
@@ -31,6 +31,11 @@ export const Settings = {
 
     read: (): Settings =>
     {
+        if (process.env["BEHIND_PROXY"] !== undefined)
+        {
+            throw new Error("BEHIND_PROXY believed any x-forwarded-for, which a caller writes themselves. List the proxies in front instead: TRUSTED_PROXIES=10.0.0.5 or a range such as 10.0.0.0/8, and remove BEHIND_PROXY.");
+        }
+
         return {
             port: Env.number("PORT", 7280, 1, 65_535),
             database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
@@ -39,7 +44,7 @@ export const Settings = {
             sockets: Env.flag("SOCKETS", true),
             origins: Env.list("ORIGINS"),
             bodyBytes: Env.number("BODY_BYTES", 1_000_000, 1),
-            behindProxy: Env.flag("BEHIND_PROXY", false),
+            trustedProxies: Env.list("TRUSTED_PROXIES"),
             watchSeconds: Env.number("WATCH_SECONDS", 60),
             logLevel: Env.oneOf("LOG_LEVEL", Settings.levels, "info"),
         };
