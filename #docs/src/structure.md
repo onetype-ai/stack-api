@@ -25,7 +25,7 @@ plugins/<plugin>/
 ├── migrations/     NNNN-name.sql, applied in order
 ├── services/       camelCase.ts, one class a file
 ├── routes/         camelCase.ts, one resource a file
-├── utils/          PascalCase.ts, one class a file
+├── utils/          PascalCase.ts, one object a file
 └── tests/          camelCase.test.ts, flat
 ```
 
