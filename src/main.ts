@@ -9,9 +9,11 @@ export async function open(): Promise<void>
 {
     const settings = Settings.read();
     const log = Log.forLevel(settings.logLevel);
+    const plugins = await Plugins.discover();
 
     const api = await start({
-        plugins: await Plugins.discover(),
+        plugins,
+        config: Settings.configFor(plugins),
         database: { file: settings.database },
         outbox: settings.outbox,
         schedule: settings.schedule,

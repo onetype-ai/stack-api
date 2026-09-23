@@ -31,6 +31,11 @@ Two people sharing one database need not: a restart empties it under both.
 startup and refused by name, so a typo stops the boot rather than taking a
 default.
 
+A plugin's config is read as `<PLUGIN>__<FIELD>`: plugin `web-crawler`, field
+`baseURL`, reads `WEB_CRAWLER__BASE_URL`. A variable no field reads, or one set
+for a plugin that declares no config, stops the boot by name. A refused value
+is never printed. `pnpm dev` and `pnpm start` read `.env`; copy `.env.example`.
+
 Everything defaults but `ORIGINS`, which starts empty: no browser origin is
 allowed until one is named.
 
