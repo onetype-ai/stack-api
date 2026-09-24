@@ -76,6 +76,9 @@
 > Builds the outbound caller: it follows no redirects, reads at most `maxBytes`, gives up after `timeoutMs`, dials the address it is pinned to when given one, and throws `HttpRequestError` for every failure including a non-2xx status.
 ### httpClient(options?: HttpClientOptions): HttpClient
 
+> A pub/sub within one process: what is published is heard at once, by this process alone.
+### inProcessPubSub(): PubSub
+
 > What a schema names a file field as, so `z.custom` can check it.
 ### isUploadedFile(value: unknown): value is UploadedFile
 
@@ -107,7 +110,7 @@
 > Names a unit, and answers the function that marks a number as one.
 ### measure<Unit extends string>(_unit: Unit): (count: number) => Tagged<Unit>
 
-> Where events wait, in the same database as the work they announce. The process writing a row holds it for
+> Where events wait, in the same SQLite database as the work they announce. The process writing a row holds it for
 > `leaseMs` while it delivers; a row one listener refused waits out a backoff and is claimed again, by this process
 > or another, for the listeners that have not heard it.
 ### outbox(connection: Database.Database, settings?: { leaseMs?: number }): Outbox
@@ -122,7 +125,7 @@
 > Answers the caller's `x-request-id` only when it is 1-64 of `[A-Za-z0-9_-]`, and a fresh UUID otherwise, so a caller cannot write arbitrary text into every log line.
 ### requestId(header: string | undefined): string
 
-> Where later work waits, in the same database as the work that asked for it.
+> Where later work waits, in the same SQLite database as the work that asked for it.
 > A claim is a lease: the process renews it while the command runs, and a lease nobody renewed
 > means the process died, so the job is taken again and the lost run counted. Only the holder of
 > a claim may finish or put back what it claimed.
@@ -153,11 +156,13 @@
     readonly expires: "x-session-expires"
     readonly end: "x-session-end"
 
-> Every open connection, and how far what a plugin pushes travels.
-### sockets(kernel: { channels: () => readonly RegisteredChannel[] }, claim?: string): { push: (message: ChannelMessage) => void; connected: (scope: string, permission: string) => readonly string[]; subscribe: (identity: Identity | undefined, send: (text: string) => void) => Subscription }
+> Every open connection, and how far what a plugin pushes travels; `changed` hears when who is present may have changed.
+### sockets(kernel: { channels: () => readonly RegisteredChannel[] }, claim?: string, changed?: () => void): { push: (message: ChannelMessage) => void; /** This process's sockets as presence counts them: identified, inside a scope. */ present: () => Present[]; connected: (scope: string, permission: string) => readonly string[]; subscribe: (identity: Identity | undefined, send: (text: string) => void) => Subscription }
     channels: () => readonly RegisteredChannel[]
-    }, claim?: string): {
+    }, claim?: string, changed?: () => void): {
     push: (message: ChannelMessage) => void
+    // This process's sockets as presence counts them: identified, inside a scope.
+    present: () => Present[]
     connected: (scope: string, permission: string) => readonly string[]
     subscribe: (identity: Identity | undefined, send: (text: string) => void) => Subscription
 
@@ -310,6 +315,11 @@
     fromConnection: string | undefined
     // The identity it is for, for a reach of "identity".
     to?: string | undefined
+    // What a socket holding each set of permissions hears instead: the first whose permissions it holds, else `message`.
+    variants?: readonly {
+    requires: readonly string[]
+    message: unknown
+    }[] | undefined
 
 > `connection` is the one socket that asked, `viewer` every socket one person has open, `scope` everyone the claim puts together, `everyone` all of them.
 > `everyone` is written out, like `public` on a route, so a world-readable channel is a decision rather than an oversight.
@@ -403,6 +413,12 @@
     scope: string | undefined
     // Another plugin's services, by name. Only what `dependsOn` names.
     use: <Api>(plugin: string) => Api
+    // A registry this plugin owns or depends on the owner of.
+    registry: (name: string) => RegistryAccess
+    // A tenant registry this plugin owns or depends on the owner of, for the scope this context acts in.
+    scopedRegistry: (name: string) => ScopedRegistryAccess
+    // Runs a pipeline this plugin owns or depends on the owner of, checking its input and output.
+    pipeline: (name: string) => PipelineAccess
 
 > One thing wrong, and everything needed to fix it.
 ### ContractProblem
@@ -432,6 +448,9 @@
     readonly hooks: readonly DeclaredEntry[]
     readonly participates: readonly DeclaredEntry[]
     readonly commands: readonly DeclaredCommand[]
+    readonly registries: readonly DeclaredRegistry[]
+    readonly adds: readonly DeclaredAddition[]
+    readonly pipelines: readonly DeclaredPipeline[]
     readonly tables: readonly string[]
     readonly scope?: DeclaredScope
     readonly allowedHosts: readonly string[] | "anywhere"
@@ -441,6 +460,11 @@
     readonly setup: boolean
     readonly teardown: boolean
 
+> What one plugin adds at start to one registry.
+### DeclaredAddition
+    readonly registry: string
+    readonly keys: readonly string[]
+
 > One command, which unlike an event names what the caller must hold.
 ### DeclaredCommand = DeclaredEntry &
     readonly requires: readonly string[]
@@ -449,6 +473,18 @@
 ### DeclaredEntry
     readonly name: string
     readonly describe: string
+
+> One pipeline and the order its steps run in, across the plugins read together; `problems` is what start would refuse.
+### DeclaredPipeline = DeclaredEntry &
+    readonly steps: readonly {
+    readonly id: string
+    readonly owner: string
+    }[]
+    readonly problems: readonly string[]
+
+> One registry: its sentence, and the field that names each entry.
+### DeclaredRegistry = DeclaredEntry &
+    readonly key: string
 
 > One route as declared: what reaches it, and what it asks of the caller.
 ### DeclaredRoute
@@ -501,6 +537,12 @@
     channels?: Readonly<Record<string, Channel>>
     listens?: Readonly<Record<string, EmittedEvent<Context<z.infer<Schema>, NoExtraKeys<Services>, Db>>>>
     hooks?: Readonly<Record<string, Hook>>
+    // Named lists this plugin owns, keyed `<plugin>.<name>`.
+    registries?: Readonly<Record<string, Registry>>
+    // Ordered steps this plugin owns, keyed `<plugin>.<name>`; others add steps through `adds`.
+    pipelines?: Readonly<Record<string, Pipeline<Context<z.infer<Schema>, NoExtraKeys<Services>, Db>>>>
+    // Entries this plugin adds at start to others' registries, or steps to their pipelines, by name.
+    adds?: Readonly<Record<string, readonly unknown[]>>
     participates?: Readonly<Record<string, Participation<Context<z.infer<Schema>, NoExtraKeys<Services>, Db>>>>
     commands?: Readonly<Record<string, AnyCommand<Context<z.infer<Schema>, NoExtraKeys<Services>, Db>>>>
     // Who is calling, read from the request this plugin knows how to read; at most one plugin declares this, and answers nothing for a stranger.
@@ -556,6 +598,9 @@
     describe: string
     schema: z.ZodType
 
+> Where one step sits in a pipeline, and who put it there.
+### ExplainedStep = { readonly id: string; readonly owner: string; readonly anchor?: { readonly before: string } | { readonly after: string } | undefined }
+
 > An event a listener kept refusing, as an operator sees it.
 ### FailedEvent
     id: string
@@ -589,6 +634,12 @@
     | "UNDECLARED_CHANNEL"
     | "UNDECLARED_EVENT"
     | "UNKEPT_EVENT"
+    | "UNKEPT_JOB"
+    | "UNSTORED_SCHEDULE"
+    | "JOINED_TRANSACTION"
+    | "UNSUPPORTED_DATABASE"
+    | "MIXED_DIALECT"
+    | "UNPORTABLE_COLUMN"
     | "SELF_HEARD_EVENT"
     | "UNDECLARED_HOOK"
     | "UNDECLARED_COMMAND"
@@ -613,6 +664,13 @@
     | "UNAUTHENTICATED"
     | "PERMISSION_DENIED"
     | "RATE_LIMITED"
+    | "UNDECLARED_REGISTRY"
+    | "DUPLICATE_REGISTRY"
+    | "INVALID_ENTRY"
+    | "UNDECLARED_PIPELINE"
+    | "INVALID_PIPELINE"
+    | "PIPELINE_FAILED"
+    | "UNKEPT_ENTRY"
     | "NOT_STARTED"
 
 ### FaultDetail
@@ -717,6 +775,8 @@
     settled: () => Promise<void>
     // Runs whatever the schedule says is due, once, and waits for it.
     due: () => Promise<number>
+    // A pipeline's steps in the order they run, and who put each there.
+    explain: (pipeline: string) => readonly ExplainedStep[]
     run: (command: string, input: unknown, identity?: Identity) => Promise<void>
 
 > What a project gives the kernel.
@@ -724,6 +784,10 @@
     plugins: readonly Plugin[]
     config?: Readonly<Record<string, unknown>>
     db?: KernelStore
+    // Where tenant registries keep their entries; a store gives one (`store.registries()`).
+    registries?: RegistryStore
+    // Where durable pipeline runs keep their input and results; a store gives one (`store.runs()`).
+    runs?: PipelineStore
     // What holds the open sockets. Without one, ctx.push throws.
     sockets?: Sockets
     httpClient?: HttpClient
@@ -744,6 +808,8 @@
     runsSchedule?: boolean
     // How often to hand failed events to the listeners that have not heard them, in milliseconds: 5000 when left out.
     outboxBeatMs?: number
+    // Told when an event became deliverable at once (a dead letter put back), so the other processes need not wait a beat.
+    woken?: () => void
     // How long a scheduled command is held while it runs, in milliseconds: ten leases when left out; past it the lease runs out and the job is taken again, counted.
     jobRunMs?: number
     // How many times a scheduled command may throw before it is abandoned.
@@ -758,8 +824,8 @@
     mostStreamsPerCaller?: number
     // How long `stop` waits for open streams to send their final RESTARTING event, in milliseconds (5000 when left out).
     streamDrainMs?: number
-    // Holds every reply to the header allow-list (the kit's short list plus a route's `sends`) now; 9.0 makes it the default. Left out, a header the list would drop still goes out, named once in the log.
-    strictReplyHeaders?: boolean
+    // Every reply is held to the header allow-list (the kit's short list plus a route's `sends`) since 9.0; `true` says so and changes nothing, `false` is refused.
+    strictReplyHeaders?: true
 
 > One request, as it reaches the kernel.
 ### KernelRequest
@@ -842,8 +908,8 @@
 ### OpenOptions
     port: number
     log: Logger
-    // Whether something in front sets `x-forwarded-for`; without one, a caller writes their own address. Kept for 8.x: name `trustedProxies` instead.
-    behindProxy?: boolean
+    // Gone in 9.0 (`true` trusted a hop the caller writes, and is refused): name `trustedProxies` instead.
+    behindProxy?: false
     // The proxies in front, as addresses or ranges: a socket's caller is the rightmost hop none of them wrote, as `Server.from` reads it.
     trustedProxies?: readonly string[]
     // How often to report listeners that failed; zero never looks.
@@ -860,7 +926,7 @@
 > Order holds within one event's listeners only: a retried event can reach a listener after a later one.
 ### Outbox
     // Writes events inside the transaction that emitted them.
-    save: (db: unknown, messages: readonly OutboxMessage[]) => void
+    save: (db: unknown, messages: readonly OutboxMessage[]) => Promise<void>
     // Marks one delivered.
     markSent: (id: string) => Promise<void>
     // What was kept but never marked sent. Read once, at startup, by a kernel whose outbox cannot `claim`.
@@ -916,6 +982,90 @@
     permission: string
     describe: string
 
+> Ordered steps one plugin declares and others add to, run in the caller's context. It opens no transaction:
+> a step that calls a provider never writes inside the same transaction, since a provider call must never hold locks.
+### Pipeline<Context> = Describable &
+    input: z.ZodType
+    output: z.ZodType
+    steps: readonly PipelineStep<Context>[]
+    // "request" (the default) runs in the caller's context now; "durable" runs each step as scheduled work, its result stored, resumed after a crash.
+    flavour?: "request" | "durable" | undefined
+
+> What a plugin does with one pipeline.
+### PipelineAccess
+    // A request pipeline answers its output. A durable one starts a run, only inside `ctx.tx`, and answers its id; a second run with the same key in this scope answers the first.
+    run: (input: unknown, options?: {
+    key?: string | undefined
+    }) => Promise<unknown>
+    // A durable run of this scope; undefined for another scope's or none.
+    status: (runId: string) => Promise<PipelineRunStatus | undefined>
+    // Continues a failed durable run of this scope from the step it failed at, only inside `ctx.tx`; false when it had not failed.
+    retry: (runId: string) => Promise<boolean>
+
+> One durable pipeline run, as stored: never its input or results, which a caller reads through the pipeline.
+### PipelineRun
+    id: string
+    pipeline: string
+    scope: string
+    status: "running" | "done" | "failed"
+    // The step it failed at, when it failed.
+    step: string | undefined
+    attempts: number
+    output: unknown
+
+> Where a durable run stands, for the scope that started it.
+### PipelineRunStatus
+    status: "running" | "done" | "failed"
+    // The step it failed at.
+    step?: string | undefined
+    // What it answered, once done.
+    output?: unknown
+
+> One step of a pipeline: it answers the next state, or `stop(result)` to end the run with that output.
+### PipelineStep<Context>
+    id: string
+    // Where an added step sits: beside one step, before or after it. The owner's own steps need neither.
+    before?: string | undefined
+    after?: string | undefined
+    // In a durable pipeline, what this step answers: stored as JSON, and read back by the next step after a crash. Required there.
+    result?: z.ZodType | undefined
+    // In a durable pipeline, how many attempts before the run fails at this step: 3 when left out.
+    retries?: number | undefined
+    // `idempotencyKey` is set in a durable pipeline, `<runId>:<stepId>`, the same on every attempt: hand it to a provider so a replay never charges or sends twice.
+    run: (state: never, ctx: Context, step: {
+    stop: (result: unknown) => unknown
+    idempotencyKey?: string | undefined
+    }) => unknown
+
+> Where durable pipeline runs keep their input and each step's result, in the same database as the schedule that
+> runs them: a step's result is written with the enqueue of the next, so a crash redoes a step or finds it done.
+### PipelineStore
+    // Starts a run inside the transaction `db` belongs to; a run with the same key in this scope is answered instead.
+    begin: (db: unknown, run: {
+    id: string
+    pipeline: string
+    scope: string
+    key: string
+    input: unknown
+    }) => Promise<{
+    id: string
+    isNew: boolean
+    }>
+    get: (id: string) => Promise<(PipelineRun & {
+    input: unknown
+    }) | undefined>
+    // The results stored so far, by step id.
+    results: (id: string) => Promise<ReadonlyMap<string, unknown>>
+    // Stores one step's result inside the transaction `db` belongs to; false when it was stored already.
+    keep: (db: unknown, id: string, step: string, result: unknown) => Promise<boolean>
+    finish: (db: unknown, id: string, output: unknown) => Promise<void>
+    // Counts one failed attempt, outside any transaction, answering how many there have been.
+    attempted: (id: string) => Promise<number>
+    // Marks a running run failed at a step; false when it was not running.
+    fail: (db: unknown, id: string, step: string) => Promise<boolean>
+    // Puts a failed run back to running, its attempts reset; false when it had not failed.
+    revive: (db: unknown, id: string) => Promise<boolean>
+
 > A plugin: its name, and what it declared.
 ### Plugin
     name: string
@@ -923,6 +1073,14 @@
 
 ### PluginModules = Readonly<Record<string,
     default?: Plugin
+
+> Messages between the processes serving one application, by topic. What one publishes, every process subscribed to
+> that topic hears, itself included; at most once, and nothing kept for a process that was not listening. The kit
+> carries socket pushes and presence on it; a project may bring its own (Redis, NATS) through `start({ pubsub })`.
+### PubSub
+    publish: (topic: string, text: string) => void
+    subscribe: (topic: string, hear: (text: string) => void) => () => void
+    close: () => Promise<void>
 
 > One command waiting for its moment.
 ### QueuedJob
@@ -984,6 +1142,26 @@
 > A route, and the plugin it came from.
 ### RegisteredRoute = { plugin: string; method: HttpMethod; path: string; describe: string; requires: readonly string[]; public: boolean; anyOrigin: boolean; limit: { requests: number; seconds: number } | undefined; accepts: "json" | "form" | "urlencoded"; reads: readonly string[]; keepsRaw: boolean }
 
+> A named list one plugin declares and others add to, each entry checked as the owner says.
+### Registry = Describable & { entry: z.ZodType; key: string; cap?: number | undefined; reserved?: readonly string[] | undefined; replace?: "refuse" | "warn" | undefined; set?: "owner" | "dependants" | undefined; scope?: "static" | "tenant" | undefined; expose?: { requires: readonly string[] } | undefined }
+
+> What a plugin reads from, and adds to, one registry.
+### RegistryAccess
+    // Ordered by `order`, then key, without what the caller lacks the `requires` for.
+    list: () => readonly Readonly<Record<string, unknown>>[]
+    // Checks the entry as the owner declared, and answers what takes it out again. Held by this process only.
+    set: (entry: unknown) => () => void
+
+> One entry in a registry, and the plugin that added it.
+### RegistryEntry = Readonly<Record<string, unknown>> &
+    readonly order?: number | undefined
+    readonly requires?: readonly string[] | undefined
+
+> Where tenant registries keep their entries, in the same database as the work that changes them. A change writes
+> the entry and bumps the registry's version for that scope in the caller's transaction, so commit order is version
+> order, and a rolled-back change leaves neither.
+### RegistryStore = { list: (registry: string, scope: string) => Promise<{ version: number; entries: readonly StoredEntry[] }>; get: (registry: string, scope: string, key: string) => Promise<StoredEntry | undefined>; save: (db: unknown, change: { registry: string; scope: string; key: string; plugin: string; entry: unknown }) => Promise<{ version: number; before: StoredEntry | undefined }>; remove: (db: unknown, change: { registry: string; scope: string; key: string }) => Promise<{ version: number; before: StoredEntry } | undefined> }
+
 > One address a name resolves to.
 ### ResolvedAddress
     address: string
@@ -1042,7 +1220,7 @@
 > Where work waits until it is time.
 ### Schedule
     // Writes one, inside the transaction that asked for it when there is one.
-    save: (db: unknown, job: QueuedJob) => void
+    save: (db: unknown, job: QueuedJob) => Promise<void>
     // Claims what is due, at most `limit`, marking each taken; a job whose lease ran out is claimed again with its lost run counted.
     claim: (now: number, limit: number) => Promise<readonly QueuedJob[]>
     // How long a claim holds without `renew`; the kernel renews every third of it while the command runs.
@@ -1062,6 +1240,20 @@
     markFailed: (id: string, at: number, lease?: string) => Promise<void>
     // It threw too many times. Stop trying; with `lease`, only if that claim still holds it.
     giveUp: (id: string, lease?: string) => Promise<void>
+
+> What a plugin reads from, and changes in, one tenant registry: bound to the caller's scope, never to an entry.
+### ScopedRegistryAccess
+    // The owner's and dependants' `adds`, then this scope's stored entries, ordered and without what the caller lacks the `requires` for.
+    list: () => Promise<readonly Readonly<Record<string, unknown>>[]>
+    // The same entries with this scope's version, read before them: what `GET /registries/<name>` answers.
+    snapshot: () => Promise<{
+    version: number
+    entries: readonly Readonly<Record<string, unknown>>[]
+    }>
+    // Checks the entry as the owner declared and stores it for this scope. Only inside `ctx.tx`: it commits with the work.
+    set: (entry: unknown) => Promise<void>
+    // Takes this scope's stored entry out, answering whether there was one. Only inside `ctx.tx`.
+    remove: (key: string) => Promise<boolean>
 
 > How a scope becomes a condition the database understands; `plugin` names whose table it is, since two plugins may each name a table alike.
 ### ScopeFilter = (table: string, column: string, value: string, plugin?: string) => unknown
@@ -1092,10 +1284,10 @@
     connected?: (scope: string, permission: string) => readonly string[]
 
 > What `start` answers: the running kernel and store, the Hono app and its `fetch`, `sockets` only when sockets were asked for, and `stop`, which stops the kernel and closes the database.
-### StartedApp = { kernel: Kernel; store: Store; app: ReturnType<typeof serve>; fetch: (request: Request) => Response | Promise<Response>; sockets: { subscribe: (identity: Identity | undefined, send: (text: string) => void) => Subscription } | undefined; served: { origins: readonly string[]; session: SessionOptions | undefined; bodyBytes: number; from: ServerOptions["from"] }; stop: () => Promise<void> }
+### StartedApp = { kernel: Kernel; store: Store; app: ReturnType<typeof serve>; fetch: (request: Request) => Response | Promise<Response>; sockets: { subscribe: (identity: Identity | undefined, send: (text: string) => void) => Subscription } | undefined; served: { origins: readonly string[]; session: SessionOptions | undefined; bodyBytes: number; from: ServerOptions["from"]; identify: (c: Parameters<NonNullable<ServerOptions["from"]>>[0]) => Promise<Identity | undefined> }; stop: () => Promise<void> }
 
 > Everything `start` takes; `outbox` and `schedule` are opt-in, while `sockets` and `limits` are on unless set to false.
-### StartOptions = { plugins: readonly Plugin[]; database?: DatabaseOptions | Store | undefined; config?: Readonly<Record<string, unknown>> | undefined; sockets?: boolean | { claim: string } | undefined; identify?: ((kernel: Kernel) => ServerOptions["identify"]) | undefined; http?: Omit<ServerOptions, "kernel" | "identify" | "log"> | undefined; httpClient?: HttpClientOptions | HttpClient | undefined; lookup?: Lookup | undefined; rateLimiter?: RateLimiter | undefined; mostStreamsPerCaller?: number | undefined; streamDrainMs?: number | undefined; strictReplyHeaders?: boolean | undefined; limits?: boolean | undefined; outbox?: boolean | undefined; schedule?: boolean | "enqueue" | undefined; jobLeaseMs?: number | undefined; jobRunMs?: number | undefined; outboxLeaseMs?: number | undefined; log?: Logger | undefined }
+### StartOptions = { plugins: readonly Plugin[]; database?: DatabaseOptions | { dialect: "postgres"; url: string; poolSize?: number } | { dialect: "postgres"; pglite: PGlite; schema?: string } | Store | undefined; config?: Readonly<Record<string, unknown>> | undefined; sockets?: boolean | { claim: string } | undefined; pubsub?: PubSub | undefined; identify?: ((kernel: Kernel) => ServerOptions["identify"]) | undefined; http?: Omit<ServerOptions, "kernel" | "identify" | "log"> | undefined; httpClient?: HttpClientOptions | HttpClient | undefined; lookup?: Lookup | undefined; rateLimiter?: RateLimiter | undefined; mostStreamsPerCaller?: number | undefined; streamDrainMs?: number | undefined; strictReplyHeaders?: true | undefined; limits?: boolean | undefined; outbox?: boolean | undefined; schedule?: boolean | "enqueue" | undefined; jobLeaseMs?: number | undefined; jobRunMs?: number | undefined; outboxLeaseMs?: number | undefined; log?: Logger | undefined }
 
 > What a project holds after opening a database.
 ### Store<Db = unknown> =
@@ -1108,13 +1300,24 @@
     schedule?: (settings?: {
     leaseMs?: number
     }) => Schedule
+    // Where tenant registries keep their entries, in this same database.
+    registries?: () => RegistryStore
+    // Where durable pipeline runs keep their input and results, in this same database.
+    runs?: () => PipelineStore
     // How a declared scope becomes a condition over the tables it was given.
     createScopeFilter?: () => ScopeFilter
     tx: <Result>(plugin: string, run: (db: unknown) => Promise<Result>) => Promise<Result>
     write: <Result>(run: () => Promise<Result>) => Promise<Result>
     inTransaction: () => boolean
-    migrate: (sources: readonly MigrationSource[]) => MigrationStep[]
-    close: () => void
+    migrate: (sources: readonly MigrationSource[]) => Promise<MigrationStep[]>
+    close: () => Promise<void>
+
+> One stored entry of a tenant registry, with the version of the change that wrote it.
+### StoredEntry
+    key: string
+    plugin: string
+    entry: unknown
+    version: number
 
 > What building a store needs: where the file is, and who owns what.
 ### StoreOptions = DatabaseOptions &
@@ -1194,9 +1397,12 @@
 > Registers, once per test process (a setup file), where missing dependencies come from. `resolve` is given the names
 > nothing passed provides, in waves as their own dependencies turn up, and each name is asked for once: a resolver
 > may load only those plugins, or answer every plugin it holds. A test that passes every plugin it needs never calls it.
-### configureTestKernels(configuring: { resolve?: (missing: readonly string[]) => Promise<TestKernelFixture>; defaults?: TestKernelDefaults }): void
+### configureTestKernels(configuring: { resolve?: (missing: readonly string[]) => Promise<TestKernelFixture>; defaults?: TestKernelDefaults; pglite?: { extensions: Readonly<Record<string, unknown>> } }): Promise<void>
     resolve?: (missing: readonly string[]) => Promise<TestKernelFixture>
     defaults?: TestKernelDefaults
+    pglite?: {
+    extensions: Readonly<Record<string, unknown>>
+    }
 
 > An identity a test controls.
 ### createIdentity(permissions?: readonly string[], id?: string, claims?: Readonly<Record<string, unknown>>): Identity
@@ -1206,6 +1412,11 @@
 
 > Reads every plugin folder under `root` by regex, never by compiling, and answers what crosses a boundary; tests are excused the deep import of a dependency's `plugin.ts`.
 ### findImportViolations(root: string): ImportViolation[]
+
+> Where one plugin's migrations for SQLite and for Postgres went apart: a numbered file in one folder and not the
+> other. Both are generated from the same tables, so a gap means one dialect was generated and the other forgotten.
+> A plugin keeping one folder of files, the layout before 9.0, runs on SQLite alone and is not reported.
+### findMigrationDrift(root: string): DialectFinding[]
 
 > Answers which of the `required` paths, read relative to `root`, are absent or hold nothing but whitespace; a file that exists but is empty counts as missing.
 ### findMissingDocs(root: string, required: readonly string[]): string[]
@@ -1219,6 +1430,10 @@
 > One word naming two closed sets that are nearly, but not quite, the same.
 ### findSplitVocabulary(root: string): SplitVocabulary[]
 
+> Where a query ends in `.get()`, `.all()` or `.run()`, which only the SQLite driver answers: the same code fails on
+> Postgres. Read per statement, and only where the statement reaches a `db`, so a Map's get or a command's run passes.
+### findSqliteOnlyCalls(root: string): DialectFinding[]
+
 > Takes the two files' TEXT, not their paths, and answers the keys of `Definition` that the procedure never names in backticks.
 ### findUndocumentedKeys(contract: string, procedure: string): string[]
 
@@ -1231,14 +1446,21 @@
 > Fields a contract declares that nothing in production reads.
 ### findUnusedFields(root: string, separately?: boolean): UnusedField[]
 
+> Boots a test kernel with stand-ins, a clock a test moves and a seed, and answers a way to call it as someone. The API twin of the app kit's `openApp`.
+### openApi({ stands, clock, seed, plugins, ...rest }: OpenApiOptions): Promise<OpenedApi>
+
 > Every project-wide check in one object, each answering `ProjectProblem[]`; `findAll` runs the lot against sensible defaults and answers an empty array when a project is clean.
-### Project: { /** What a project is suggested to require of itself, the same list the app kit names. */ required: readonly ["#docs/usage.md", "#docs/architecture.md"]; findAll: (checking?: ProjectCheckOptions) => ProjectProblem[]; findImportViolations: (root: string, leaving?: readonly string[]) => ProjectProblem[]; /** Where a scoped table is reached without narrowing, which returns another tenant's rows with nothing reporting it. */ findUnscopedReach: (root: string) => ProjectProblem[]; findUnusedFields: (root: string, apart?: boolean) => ProjectProblem[]; findUnexplainedPlugins: (root: string) => ProjectProblem[]; findCopiedVocabulary: (root: string, excused?: readonly string[]) => ProjectProblem[]; findSplitVocabulary: (root: string, excused?: readonly string[]) => ProjectProblem[]; findSharedNames: (root: string, excused?: readonly string[]) => ProjectProblem[]; findOversizedDocs: (root: string, limit: number) => ProjectProblem[]; findUndocumentedKeys: (procedure: string) => ProjectProblem[] }
+### Project: { /** What a project is suggested to require of itself, the same list the app kit names. */ required: readonly ["#docs/usage.md", "#docs/architecture.md"]; findAll: (checking?: ProjectCheckOptions) => ProjectProblem[]; findImportViolations: (root: string, leaving?: readonly string[]) => ProjectProblem[]; /** Where a scoped table is reached without narrowing, which returns another tenant's rows with nothing reporting it. */ findUnscopedReach: (root: string) => ProjectProblem[]; /** Where a plugin's SQLite and Postgres migrations went apart: a numbered step in one dialect's folder and not the other's. */ findMigrationDrift: (root: string) => ProjectProblem[]; /** Where a query ends in `.get()`, `.all()` or `.run()`, which only SQLite answers, with the portable replacement. */ findSqliteOnlyCalls: (root: string) => ProjectProblem[]; findUnusedFields: (root: string, apart?: boolean) => ProjectProblem[]; findUnexplainedPlugins: (root: string) => ProjectProblem[]; findCopiedVocabulary: (root: string, excused?: readonly string[]) => ProjectProblem[]; findSplitVocabulary: (root: string, excused?: readonly string[]) => ProjectProblem[]; findSharedNames: (root: string, excused?: readonly string[]) => ProjectProblem[]; findOversizedDocs: (root: string, limit: number) => ProjectProblem[]; findUndocumentedKeys: (procedure: string) => ProjectProblem[] }
     // What a project is suggested to require of itself, the same list the app kit names.
     required: readonly ["#docs/usage.md", "#docs/architecture.md"]
     findAll: (checking?: ProjectCheckOptions) => ProjectProblem[]
     findImportViolations: (root: string, leaving?: readonly string[]) => ProjectProblem[]
     // Where a scoped table is reached without narrowing, which returns another tenant's rows with nothing reporting it.
     findUnscopedReach: (root: string) => ProjectProblem[]
+    // Where a plugin's SQLite and Postgres migrations went apart: a numbered step in one dialect's folder and not the other's.
+    findMigrationDrift: (root: string) => ProjectProblem[]
+    // Where a query ends in `.get()`, `.all()` or `.run()`, which only SQLite answers, with the portable replacement.
+    findSqliteOnlyCalls: (root: string) => ProjectProblem[]
     findUnusedFields: (root: string, apart?: boolean) => ProjectProblem[]
     findUnexplainedPlugins: (root: string) => ProjectProblem[]
     findCopiedVocabulary: (root: string, excused?: readonly string[]) => ProjectProblem[]
@@ -1306,6 +1528,11 @@
     file: string
     values: readonly string[]
 
+> One finding, written as a sentence a person can act on.
+### DialectFinding
+    file: string
+    message: string
+
 > One method name and signature that more than one plugin wrote for itself under its own `utils/`, with every file holding a copy.
 ### DuplicateSignature
     signature: string
@@ -1363,6 +1590,20 @@
 > One line a plugin logged, flattened: `level`, `plugin` and `line` are always there, and whatever the call passed as `about` is spread alongside them.
 ### LogLine = { level: string; plugin: string; line: string } & Readonly<Record<string, unknown>>
 
+### OpenApiOptions = Omit<TestKernelOptions, "now"> &
+    // Plugins standing in for real ones, by the name they stand in for: a fake mail sender for "mail".
+    stands?: Readonly<Record<string, Plugin>>
+    // The clock every plugin reads; one starting now, moving only when told, when left out.
+    clock?: TestClock
+    // Writes what every test in the file starts from, once the kernel runs: the project's own fixture.
+    seed?: (api: TestKernel) => void | Promise<void>
+
+### OpenedApi
+    api: TestKernel
+    clock: TestClock
+    // Calls a route as `identity`, or signed out when it is undefined, and answers what the kernel answered.
+    call: (identity: Identity | undefined, method: HttpMethod, path: string, input?: unknown) => Promise<KernelResponse>
+
 > One markdown file over the limit, `size` measured in characters of its whole text rather than lines or bytes.
 ### OversizedDoc
     path: string
@@ -1387,7 +1628,7 @@
 
 > One finding from any `Project` check, already written out as a sentence a person can act on; `check` says which check spoke.
 ### ProjectProblem
-    check: "boundaries" | "wiring" | "oversized" | "missing" | "unexplained" | "undocumented" | "twice" | "split" | "unscoped"
+    check: "boundaries" | "wiring" | "oversized" | "missing" | "unexplained" | "undocumented" | "twice" | "split" | "unscoped" | "migrations" | "dialect"
     message: string
 
 > One event, as a test sees it.
@@ -1460,10 +1701,10 @@
     plugins: readonly Plugin[]
     config?: Readonly<Record<string, unknown>>
     respondWith?: (request: HttpRequest) => unknown
-    // Whether events are kept until a listener has recorded them, as `start({ outbox: true })` does. Left out it is off, and 9.0 turns it on: pass `true` to test as a deployment with an outbox runs.
+    // Whether events are kept until a listener has recorded them, as `start({ outbox: true })` does: on unless `false`, as a deployment runs.
     outbox?: boolean
-    // Holds every reply to the header allow-list, as `start({ strictReplyHeaders: true })` does.
-    strictReplyHeaders?: boolean
+    // Every reply is held to the header allow-list since 9.0; `true` changes nothing, `false` is refused.
+    strictReplyHeaders?: true
     // Whether a plugin may ask for work later, as `start({ schedule: true })`.
     schedule?: boolean
     // Whether a plugin may push, as `start({ sockets: true })` does.
@@ -1482,3 +1723,55 @@
     file: string
     shape: string
     field: string
+
+# @onetype/stack-api-kit/testing/postgres
+
+# @onetype/stack-api-kit/tables
+
+## Functions
+
+> The columns a table may hold on both dialects.
+### column: { /** A text id, a UUID by convention. */ id: (name?: string) => Text; text: (name: string) => Text; /** A 32-bit integer: a count, a position. A time or anything past 2^31 is `timeMs`. */ integer: (name: string) => Whole; /** Epoch milliseconds: `bigint` on Postgres, read back as a number. */ timeMs: (name: string) => Whole; boolean: (name: string) => lite.SQLiteBooleanBuilderInitial<"">; /** A JSON value: text on SQLite, `jsonb` on Postgres. */ json: <Shape>(name: string) => lite.SQLiteTextJsonBuilderInitial<""> & { _: { data: Shape } }; real: (name: string) => lite.SQLiteRealBuilderInitial<""> }
+    // A text id, a UUID by convention.
+    id: (name?: string) => Text
+    text: (name: string) => Text
+    // A 32-bit integer: a count, a position. A time or anything past 2^31 is `timeMs`.
+    integer: (name: string) => Whole
+    // Epoch milliseconds: `bigint` on Postgres, read back as a number.
+    timeMs: (name: string) => Whole
+    boolean: (name: string) => lite.SQLiteBooleanBuilderInitial<"">
+    // A JSON value: text on SQLite, `jsonb` on Postgres.
+    json: <Shape>(name: string) => lite.SQLiteTextJsonBuilderInitial<""> & {
+    _: {
+    data: Shape
+    }
+    }
+    real: (name: string) => lite.SQLiteRealBuilderInitial<"">
+
+> The dialect this process builds its tables for, read once from the environment on first use: `KIT_DIALECT`, else
+> `postgres` when `DATABASE_URL` is a Postgres URL, else `sqlite`. Read here rather than set by `start`, because a
+> project imports its plugins, and with them their tables, before it starts anything.
+### dialect(): Dialect
+
+> An index, portable: `.on(...)` and, for a partial one, `.where(sql\`...\`)`.
+### index: (name: string) => ReturnType<typeof lite.index>
+
+> A primary key of several columns, portable: `primaryKey({ columns: [t.workspaceId, t.visitorId] })`.
+### primaryKey(config: { columns: readonly unknown[]; name?: string }): ReturnType<typeof lite.primaryKey>
+    columns: readonly unknown[]
+    name?: string
+
+> One table for both dialects: typed as SQLite, built for the dialect this process uses. Its migrations are
+> generated from it, once for each dialect.
+### table<Name extends string, Columns extends Record<string, lite.SQLiteColumnBuilderBase>>(name: Name, columns: Columns, extras?: (self: Portable<Name, Columns>) => unknown[]): Portable<Name, Columns>
+
+### uniqueIndex: (name: string) => ReturnType<typeof lite.uniqueIndex>
+
+## Types
+
+> Which SQL a deployment speaks. One per deployment.
+### Dialect = "sqlite" | "postgres"
+
+> What `ctx.db` is over portable tables: typed as the SQLite handle, so every query infers as it always did. `.get()`,
+> `.all()` and `.run()` answer on SQLite alone; the Project check `[dialect]` names them where they are written.
+### PortableDb<Schema extends Record<string, unknown> = Record<string, never>> = BetterSQLite3Database<Schema>

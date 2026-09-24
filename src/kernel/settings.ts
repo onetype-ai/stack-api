@@ -5,7 +5,8 @@ import type { Level, Plugin } from "@onetype/stack-api-kit";
 
 export type Settings = {
     port: number;
-    database: string;
+    // A Postgres server when DATABASE_URL names one, else a SQLite file. The kit builds tables for the same choice.
+    database: { file: string } | { dialect: "postgres"; url: string };
     outbox: boolean;
     schedule: boolean;
     sockets: boolean;
@@ -38,7 +39,7 @@ export const Settings = {
 
         return {
             port: Env.number("PORT", 7280, 1, 65_535),
-            database: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db",
+            database: Settings.databaseOf(),
             outbox: Env.flag("OUTBOX", true),
             schedule: Env.flag("SCHEDULE", false),
             sockets: Env.flag("SOCKETS", true),
@@ -48,6 +49,23 @@ export const Settings = {
             watchSeconds: Env.number("WATCH_SECONDS", 60),
             logLevel: Env.oneOf("LOG_LEVEL", Settings.levels, "info"),
         };
+    },
+
+    databaseOf: (): Settings["database"] =>
+    {
+        const url = Env.text("DATABASE_URL");
+
+        if (url === undefined)
+        {
+            return { file: Env.text("DATABASE_FILE", "./data/app.db") ?? "./data/app.db" };
+        }
+
+        if (!/^postgres(ql)?:\/\//.test(url))
+        {
+            throw new Error("DATABASE_URL must be a Postgres URL (postgres://user@host/name). For SQLite, remove DATABASE_URL and set DATABASE_FILE.");
+        }
+
+        return { dialect: "postgres", url };
     },
 
     // Values are handed over as the strings they arrived as: `start` parses them

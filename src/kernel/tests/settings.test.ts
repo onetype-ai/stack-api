@@ -89,3 +89,33 @@ describe("the proxies believed about who called", () =>
         expect(Settings.read().trustedProxies).toEqual(["10.0.0.5", "10.1.0.0/16"]);
     });
 });
+
+describe("the database", () =>
+{
+    afterEach(() =>
+    {
+        vi.unstubAllEnvs();
+    });
+
+    test("is a Postgres server when DATABASE_URL names one, else the SQLite file", () =>
+    {
+        vi.stubEnv("DATABASE_URL", "postgres://api@db.internal/app");
+        const server = Settings.databaseOf();
+        vi.stubEnv("DATABASE_URL", undefined);
+        vi.stubEnv("DATABASE_FILE", "./data/other.db");
+        const file = Settings.databaseOf();
+
+        expect(server).toEqual({ dialect: "postgres", url: "postgres://api@db.internal/app" });
+        expect(file).toEqual({ file: "./data/other.db" });
+    });
+
+    test("refuses a DATABASE_URL that is not Postgres, naming the fix and never the value", () =>
+    {
+        vi.stubEnv("DATABASE_URL", `mysql://root:${SECRET}@db/app`);
+
+        const refusal = refusalOf(() => Settings.databaseOf());
+
+        expect(refusal).toContain("DATABASE_FILE");
+        expect(refusal).not.toContain(SECRET);
+    });
+});

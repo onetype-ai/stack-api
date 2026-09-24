@@ -22,7 +22,7 @@ plugins/items/
 ├── schemas/        PascalCase.ts, one zod schema a file
 ├── types/          PascalCase.ts, one type a file
 ├── tables/         camelCase.ts, one table a file
-├── migrations/     NNNN-name.sql, applied in order
+├── migrations/     sqlite/ and postgres/, generated
 ├── services/       camelCase.ts, one class a file
 ├── routes/         camelCase.ts, one resource a file
 ├── utils/          PascalCase.ts, one object a file

@@ -33,6 +33,9 @@ test.each([
 });
 ```
 
+**Both databases.** `pnpm test` runs every test on SQLite and on Postgres
+(PGlite, in the process). A plugin writes nothing for either.
+
 **Deterministic.** Time comes from `now` or `testClock()`, and an event is
 awaited with `api.flush()`. A flaky test is fixed, never given a longer
 timeout.

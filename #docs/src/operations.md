@@ -2,6 +2,9 @@
 
 What the kit does for every request, and the one place a project decides it.
 
+**Which database.** `DATABASE_FILE` for SQLite, or `DATABASE_URL=postgres://…`
+for Postgres. Every process of one deployment reads the same one.
+
 **Who called.** Behind a proxy, list it: `TRUSTED_PROXIES=10.0.0.5,10.1.0.0/16`.
 Only what those proxies wrote in `x-forwarded-for` is believed, for http and
 `/ws` alike, so a caller cannot spend another's rate limit.

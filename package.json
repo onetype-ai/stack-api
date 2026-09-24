@@ -11,22 +11,26 @@
         "lint": "eslint src",
         "verify": "pnpm lint && pnpm typecheck && pnpm schemas --check && pnpm test",
         "schemas": "node tools/schemas.mjs",
-        "stored:accept": "tsx tools/stored-contracts.mjs"
+        "stored:accept": "tsx tools/stored-contracts.mjs",
+        "migrations": "node tools/migrations.mjs"
     },
     "dependencies": {
         "@hono/node-server": "2.1.1",
-        "@onetype/stack-api-kit": "^8.2.0",
+        "@onetype/stack-api-kit": "^9.0.1",
         "better-sqlite3": "13.0.3",
         "drizzle-orm": "0.45.2",
         "hono": "4.13.5",
+        "pg": "8.23.0",
         "ws": "8.21.3",
         "zod": "4.5.4"
     },
     "devDependencies": {
+        "@electric-sql/pglite": "0.5.8",
         "@eslint/js": "10.0.1",
         "@types/better-sqlite3": "7.6.13",
         "@types/node": "26.4.0",
         "@types/ws": "8.18.1",
+        "drizzle-kit": "0.31.11",
         "eslint": "10.9.1",
         "tsx": "4.20.6",
         "typescript": "5.9.3",

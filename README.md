@@ -18,6 +18,7 @@ pnpm dev              # http://localhost:7280, allowing the app on 7380
 pnpm start            # once, no watch
 pnpm verify           # lint, typecheck, test
 pnpm schemas          # rewrite schemas.md from the installed kit
+pnpm migrations items add_due_date   # a plugin's next step, for SQLite and Postgres
 
 PORT=7281 DATABASE_FILE=/tmp/mine/app.db pnpm dev   # a server of your own
 ```
@@ -26,7 +27,7 @@ Two people sharing one database need not: a restart empties it under both.
 
 ## Configuration
 
-`PORT`, `DATABASE_FILE`, `ORIGINS`, `BODY_BYTES`, `LOG_LEVEL`, `OUTBOX`,
+`PORT`, `DATABASE_FILE` or `DATABASE_URL`, `ORIGINS`, `BODY_BYTES`, `LOG_LEVEL`, `OUTBOX`,
 `SCHEDULE`, `SOCKETS`, `TRUSTED_PROXIES`, `WATCH_SECONDS`. Each is validated at
 startup and refused by name, so a typo stops the boot rather than taking a
 default.

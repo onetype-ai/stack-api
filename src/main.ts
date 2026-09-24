@@ -15,7 +15,7 @@ export async function open(): Promise<void>
     const api = await start({
         plugins,
         config: Settings.configFor(plugins),
-        database: { file: settings.database },
+        database: settings.database,
         outbox: settings.outbox,
         strictReplyHeaders: true,
         // Every process may ask for work later; only one started with SCHEDULE=true runs it.

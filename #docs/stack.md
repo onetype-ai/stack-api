@@ -1,9 +1,9 @@
 # Stack
 
 Node 22+, TypeScript strict with `noUncheckedIndexedAccess` and
-`exactOptionalPropertyTypes`. Hono, SQLite with Drizzle, Zod, Vitest, ESLint.
+`exactOptionalPropertyTypes`. Hono, Drizzle over SQLite or Postgres, Zod, Vitest, ESLint.
 
-One package, `@onetype/stack-api-kit`, with a second entry `./testing`.
+One package, `@onetype/stack-api-kit`, with entries `./testing` and `./tables`.
 `schemas.md` is its full surface, generated from the published types.
 
 ## What the kit is for
