@@ -12,8 +12,8 @@ importers:
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.5)
       '@onetype/stack-api-kit':
-        specifier: ^9.0.1
-        version: 9.0.1(@electric-sql/pglite@0.5.8)(@hono/node-server@2.1.1(hono@4.13.5))(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(better-sqlite3@13.0.3)(pg@8.23.0))(hono@4.13.5)(pg@8.23.0)(ws@8.21.3)
+        specifier: ^9.0.2
+        version: 9.0.2(@electric-sql/pglite@0.5.8)(@hono/node-server@2.1.1(hono@4.13.5))(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(better-sqlite3@13.0.3)(pg@8.23.0))(hono@4.13.5)(pg@8.23.0)(ws@8.21.3)
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
@@ -595,8 +595,8 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@onetype/stack-api-kit@9.0.1':
-    resolution: {integrity: sha512-vcZwZnAgV71+W4MBbrTKlttOx489UcZiNxUjvLvRbkBWEw4cR8b/d2DAeGFAYIcZtcYoLtrLm7gy6oNMur/LJA==}
+  '@onetype/stack-api-kit@9.0.2':
+    resolution: {integrity: sha512-qbGvp03aIAkO7C3q9/3EHDDxoPnDXnRRV+EqTzN4CMTyxDpbfI7tZ8uCwi5S4l5r80OTYltAVln/M8X3BMG0vw==}
     engines: {node: '>=22'}
     peerDependencies:
       '@electric-sql/pglite': '>=0.5'
@@ -1859,7 +1859,7 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@onetype/stack-api-kit@9.0.1(@electric-sql/pglite@0.5.8)(@hono/node-server@2.1.1(hono@4.13.5))(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(better-sqlite3@13.0.3)(pg@8.23.0))(hono@4.13.5)(pg@8.23.0)(ws@8.21.3)':
+  '@onetype/stack-api-kit@9.0.2(@electric-sql/pglite@0.5.8)(@hono/node-server@2.1.1(hono@4.13.5))(better-sqlite3@13.0.3)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(better-sqlite3@13.0.3)(pg@8.23.0))(hono@4.13.5)(pg@8.23.0)(ws@8.21.3)':
     dependencies:
       better-sqlite3: 13.0.3
       drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(better-sqlite3@13.0.3)(pg@8.23.0)
