@@ -29,6 +29,10 @@ plugins/items/
 └── tests/          camelCase.test.ts, flat
 ```
 
+The folders above are the common ones, not a closed list. When code doesn't
+fit any of them, create a new folder named for its role instead of forcing it
+into an existing one. `utils/` holds only small, domain-free helpers.
+
 ## The examples
 
 Every procedure in `plugin/` shows one plugin, `items`: a tenant's `Item`s,
